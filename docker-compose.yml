@@ -1,0 +1,32 @@
+version: '3.7'
+networks:
+  test-network:
+services:
+  # Create a test container that will execute commands as if we were running
+  # them ourselves. This way, we don't have to install anything onto our machine.
+  test-container:
+    build:
+      dockerfile: test-container.Dockerfile
+      context: .
+    volumes:
+      - $PWD/authorized_keys:/root/.ssh/authorized_keys
+    ports:
+      - "2222:22"
+    networks:
+      test-network:
+        aliases:
+          - test_machine
+  # This container will run tests through Ansible playbooks.
+  tests:
+    build:
+      dockerfile: tests.Dockerfile
+      context: .
+    environment:
+      ANSIBLE_HOST_KEY_CHECKING: "false"
+      ANSIBLE_ROLES_PATH: "/tests"
+    networks:
+      - test-network
+    volumes:
+      - $PWD/id_rsa:/ssh_key
+      - $PWD/tests:/tests
+      - $PWD/tests.yaml:/tests.yaml

@@ -1,0 +1,6 @@
+deltas
+.env
+.env*
+!.env.example
+Makefile
+docker-compose.yml

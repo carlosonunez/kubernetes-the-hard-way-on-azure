@@ -1,0 +1,3 @@
+---
+- name: "Ensure the Azure CLI is present."
+  shell: which az

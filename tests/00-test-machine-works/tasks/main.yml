@@ -1,0 +1,3 @@
+---
+- name: Confirm that connectivity and Ansible works
+  shell: echo "Hi, I'm working!"
