@@ -46,7 +46,10 @@ tests:
 		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
 		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
 		tests.yaml; \
-	$(DOCKER_COMPOSE) down -t 1;
+	if test "$(TEARDOWN)" == "true"; \
+	then \
+		$(DOCKER_COMPOSE) down -t 1; \
+	fi;
 
 debug:
 	$(DOCKER_COMPOSE) run --rm --entrypoint bash test-container;

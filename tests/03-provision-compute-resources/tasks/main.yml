@@ -1,0 +1,9 @@
+---
+
+- name: Ensure a virtual network for the Kubernetes cluster is present.
+  shell: >
+    az network list -o json |
+    jq -r '.Networks[] | select(.Name == "tthw-subnet") | .IPAddress'
+  register: result
+  failed_when: result.rc != 0 and result.stdout != "10.0.0.0/16"
+
