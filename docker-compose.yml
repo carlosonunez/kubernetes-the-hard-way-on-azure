@@ -17,6 +17,20 @@ services:
       test-network:
         aliases:
           - test_machine
+  # A convenient service for running Azure commands as kthw-sp.
+  kthw_az:
+    build:
+      dockerfile: test-container.Dockerfile
+      context: .
+    volumes:
+      - $PWD/authorized_keys:/root/.ssh/authorized_keys
+      - $PWD/.azure:/root/.azure
+    networks:
+      test-network:
+        aliases:
+          - test_machine
+    entrypoint:
+      - "az"
   # This container will run tests through Ansible playbooks.
   tests:
     build:
@@ -45,5 +59,5 @@ services:
     volumes:
       - $PWD/.azure:/root/.azure
       - $PWD/id_rsa:/ssh_key
-      - $PWD/tests:/tests
-      - $PWD/tests.yaml:/tests.yaml
+      - $PWD/deploy:/deploy
+      - $PWD/deploy.yaml:/deploy.yaml

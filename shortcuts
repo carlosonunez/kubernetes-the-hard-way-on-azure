@@ -1,0 +1,6 @@
+# vi: set ft=sh:
+# Import this file into your shell for convenient commands.
+alias kthw_az="docker-compose run --rm kthw_az"
+alias tests="make tests"
+alias deploy="make deploy_then_test"
+alias deploy_only="make deploy"

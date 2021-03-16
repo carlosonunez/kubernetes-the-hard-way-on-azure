@@ -45,11 +45,17 @@ tests:
 		--extra-vars "azure_tenant_id=$$AZURE_TENANT_ID" \
 		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
 		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
+		--extra-vars "azure_region=$$AZURE_REGION" \
 		tests.yaml; \
+	result=$$?; \
 	if test "$(TEARDOWN)" == "true"; \
 	then \
 		$(DOCKER_COMPOSE) down -t 1; \
-	fi;
+	fi; \
+	exit $$result; \
+
+# An alias for tests.
+test: tests
 
 # TECH NOTE: Why aren't we using Terraform for deployments?
 # Terraform adds a BUNCH of complexity to this setup, namely:
@@ -70,11 +76,17 @@ deploy:
 		--extra-vars "azure_tenant_id=$$AZURE_TENANT_ID" \
 		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
 		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
+		--extra-vars "azure_region=$$AZURE_REGION" \
 		deploy.yaml; \
+	result=$$?; \
 	if test "$(TEARDOWN)" == "true"; \
 	then \
 		$(DOCKER_COMPOSE) down -t 1; \
-	fi;
+	fi; \
+	>&2 echo "DEBUG: exit $$result"; \
+	exit $$result; \
+
+deploy_then_test: deploy tests
 
 debug:
 	$(DOCKER_COMPOSE) run --rm --entrypoint bash test-container;
