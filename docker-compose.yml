@@ -20,11 +20,26 @@ services:
   # This container will run tests through Ansible playbooks.
   tests:
     build:
-      dockerfile: tests.Dockerfile
+      dockerfile: ansible.Dockerfile
       context: .
     environment:
       ANSIBLE_HOST_KEY_CHECKING: "false"
       ANSIBLE_ROLES_PATH: "/tests"
+    networks:
+      - test-network
+    volumes:
+      - $PWD/.azure:/root/.azure
+      - $PWD/id_rsa:/ssh_key
+      - $PWD/tests:/tests
+      - $PWD/tests.yaml:/tests.yaml
+  # This container will run deployment steps through Ansible playbooks.
+  deployer:
+    build:
+      dockerfile: ansible.Dockerfile
+      context: .
+    environment:
+      ANSIBLE_HOST_KEY_CHECKING: "false"
+      ANSIBLE_ROLES_PATH: "/deploy"
     networks:
       - test-network
     volumes:

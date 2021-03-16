@@ -51,5 +51,30 @@ tests:
 		$(DOCKER_COMPOSE) down -t 1; \
 	fi;
 
+# TECH NOTE: Why aren't we using Terraform for deployments?
+# Terraform adds a BUNCH of complexity to this setup, namely:
+# - We will 100% have to use this wrapper to have Terraform and Azure
+#   play nicely together: https://github.com/carlosonunez/terraform-azure-wrapper
+# - It adds several seconds of time to our tests. Command line arguments are quicker.
+# - I would use Terraform if I were writing the next kubeadm or something. Given that
+#   provisioning "bare metal" Kubernetes clusters are a solved problem and that this
+#   is just for learning/testing docs, using 'az' for these steps is a ton easier.
+deploy: _ensure_test_ssh_key _rebuild_dc_service_on_change
+deploy:
+	docker-compose up -d && \
+	$(DOCKER_COMPOSE) run --rm \
+		--entrypoint ansible-playbook \
+		deployer \
+		--private-key "/ssh_key" \
+		--inventory "test_machine," \
+		--extra-vars "azure_tenant_id=$$AZURE_TENANT_ID" \
+		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
+		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
+		deploy.yaml; \
+	if test "$(TEARDOWN)" == "true"; \
+	then \
+		$(DOCKER_COMPOSE) down -t 1; \
+	fi;
+
 debug:
 	$(DOCKER_COMPOSE) run --rm --entrypoint bash test-container;

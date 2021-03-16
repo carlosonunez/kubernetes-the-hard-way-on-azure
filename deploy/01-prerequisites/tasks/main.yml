@@ -1,0 +1,13 @@
+---
+- name: Check if this is the first time we're logging into Azure.
+  shell: ! test -f "~/.azure/accessTokens.json" || test -z "$(jq .[] ~/.azure/accessTokens.json)"
+  register: result
+  ignore_errors: true
+
+- name: Log into Azure if we haven't before.
+  when: result.rc  == 0
+  shell: >-
+    az login --service-principal \
+      -u "{{ azure_client_id }}" \
+      -p "{{ azure_client_secret }}" \
+      -t "{{ azure_tenant_id }}"
