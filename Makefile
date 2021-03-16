@@ -31,3 +31,6 @@ tests:
 		--inventory "test_machine," \
 		tests.yaml; \
 	$(DOCKER_COMPOSE) down -t 1;
+
+debug:
+	$(DOCKER_COMPOSE) run --rm --entrypoint bash test-container;

@@ -1,0 +1,7 @@
+---
+- name: Ensure client tools are installed
+  shell: "{{ item }}"
+  with_items:
+    - "cfssl version"
+    - "cfssljson --version"
+    - "kubectl version --client"

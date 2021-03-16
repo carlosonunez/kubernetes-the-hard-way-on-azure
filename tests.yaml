@@ -8,3 +8,4 @@
   roles:
     - 00-test-machine-works
     - 01-prerequisites
+    - 02-client-tools
