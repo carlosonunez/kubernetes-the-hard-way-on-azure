@@ -10,7 +10,6 @@
   register: result
   ignore_errors: true
 
-
 - name: Log into Azure if we haven't before.
   when: result.rc  == 0
   shell: >-
@@ -18,3 +17,18 @@
       -u "{{ azure_client_id }}" \
       -p "{{ azure_client_secret }}" \
       -t "{{ azure_tenant_id }}"
+
+- set_fact:
+    want: kthw
+
+- name: Ensure that we have the resource group for our labs
+  shell: az group list | jq -r '.[] | select(.name == "{{ want }}") | .name'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "Expected '{{ want }}'; got '{{ got }}'"
+  when: want != got

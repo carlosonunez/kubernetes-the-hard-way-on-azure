@@ -1,0 +1,13 @@
+---
+- name: Autoregister providers as needed
+  shell: az config set extension.use_dynamic_install=yes_without_prompt
+
+# 10.128.0.0/9 is what Google Cloud uses for auto subnets, so that's what we'll
+# try using here.
+# https://cloud.google.com/vpc/docs/vpc#subnet-ranges
+- name: Create a virtual network for our Kubernetes cluster
+  shell: >
+    az network vnet create -g "{{ azure_resource_group }}" -n kthw \
+      --address-prefixes 10.128.0.0/9 \
+      --subnet-name kthw-subnet \
+      --subnet-prefixes 10.240.0.0/24 2>&1 | tee /tmp/run

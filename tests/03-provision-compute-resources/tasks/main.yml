@@ -1,13 +1,20 @@
 ---
 
-- name: Ensure a virtual network for the Kubernetes cluster is present.
+- name: Ensure the subnet for the Kubernetes cluster is present.
   shell: >
-    az network vnet list -o json |
-    jq -r '.[] | select(.name == "tthw-subnet") | .ipAddress'
-  register: result
+    az network vnet subnet list -g "{{ azure_resource_group }}" --vnet-name kthw -o json
+  register: cmd
+  ignore_errors: true
+
+- set_fact:
+    result: "{{ ( cmd.stdout | from_json ) if cmd.rc == 0 else '{}' }}"
+
+- set_fact:
+    want: '10.240.0.0/24'
+    got: "{{ (result | selectattr('name','equalto','kthw-subnet') | list | first).addressPrefix if result }}"
   ignore_errors: true
 
 - fail:
-    msg: "Expected '10.0.0.0/16' but got '{{ result.stdout }}'"
-  when: result.rc != 0 or result.stdout != "10.0.0.0/16"
+    msg: "Expected '{{ want }}' but got '{{ got }}'. Full output: '{{ result }}'"
+  when: want != got
 
