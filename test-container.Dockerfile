@@ -18,3 +18,4 @@ RUN for tool in cfssl cfssljson; \
     done; \
     curl -Lo /usr/local/bin/kubectl "https://storage.googleapis.com/kubernetes-release/release/v$kubectl_version/bin/linux/amd64/kubectl" && \
     chmod +x /usr/local/bin/kubectl
+RUN apt -y install jq

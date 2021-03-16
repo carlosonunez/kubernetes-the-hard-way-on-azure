@@ -10,6 +10,7 @@ services:
       context: .
     volumes:
       - $PWD/authorized_keys:/root/.ssh/authorized_keys
+      - $PWD/.azure:/root/.azure
     ports:
       - "2222:22"
     networks:
@@ -27,6 +28,7 @@ services:
     networks:
       - test-network
     volumes:
+      - $PWD/.azure:/root/.azure
       - $PWD/id_rsa:/ssh_key
       - $PWD/tests:/tests
       - $PWD/tests.yaml:/tests.yaml
