@@ -1,6 +1,11 @@
 MAKEFLAGS += --silent
 SHELL := /usr/bin/env bash
+ENV_FILE := $(PWD)/.env
 DOCKER_COMPOSE := docker-compose
+ifneq (,$(wildcard $(ENV_FILE)))
+	include $(PWD)/.env
+	export
+endif
 
 _ensure_test_ssh_key:
 	if ! test -f "id_rsa" || ! test -f "id_rsa.pub"; \
@@ -21,6 +26,14 @@ _rebuild_dc_service_on_change:
 		$(DOCKER_COMPOSE) build -q $$changed_service; \
 	done
 
+env:
+	if ! test -f $(ENV_FILE); \
+	then \
+		>&2 echo "INFO: Creating new env file."; \
+		grep -Ev '(^#|^$$)' $(ENV_FILE).example > $(ENV_FILE); \
+		>&2 echo "INFO: Done. Open '$(ENV_FILE)' and replace \"change_me\" with real values."; \
+	fi
+
 tests: _ensure_test_ssh_key _rebuild_dc_service_on_change
 tests:
 	docker-compose up -d && \
@@ -29,6 +42,9 @@ tests:
 		tests \
 		--private-key "/ssh_key" \
 		--inventory "test_machine," \
+		--extra-vars "azure_tenant_id=$$AZURE_TENANT_ID" \
+		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
+		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
 		tests.yaml; \
 	$(DOCKER_COMPOSE) down -t 1;
 
