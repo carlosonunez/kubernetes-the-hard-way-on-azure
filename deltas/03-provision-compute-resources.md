@@ -44,3 +44,12 @@ az login --service-principal -u $(jq -r .appId ~/.azure_credentials) \
   -p $(jq -r .password ~/.azure_credentials) \
   -t $(jq -r .tenant ~/.azure_credentials)
 ```
+
+## Create a resource group for our labs
+
+We'll also need a resource group to hold all of the resources we'll be creating
+for our labs. Run the command below to create that:
+
+```sh
+az group create --name kthw
+```

@@ -46,6 +46,7 @@ tests:
 		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
 		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
 		--extra-vars "azure_region=$$AZURE_REGION" \
+		--extra-vars "azure_resource_group=kthw" \
 		tests.yaml; \
 	result=$$?; \
 	if test "$(TEARDOWN)" == "true"; \
@@ -77,6 +78,7 @@ deploy:
 		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
 		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
 		--extra-vars "azure_region=$$AZURE_REGION" \
+		--extra-vars "azure_resource_group=kthw" \
 		deploy.yaml; \
 	result=$$?; \
 	if test "$(TEARDOWN)" == "true"; \

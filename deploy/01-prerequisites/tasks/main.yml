@@ -11,3 +11,6 @@
       -u "{{ azure_client_id }}" \
       -p "{{ azure_client_secret }}" \
       -t "{{ azure_tenant_id }}"
+
+- name: Create the resource group for our lab.
+  shell: az group create -n "{{ azure_resource_group }}" --location "{{ azure_region }}"
