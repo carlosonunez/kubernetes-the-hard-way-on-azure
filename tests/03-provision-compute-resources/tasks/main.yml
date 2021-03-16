@@ -2,19 +2,41 @@
 
 - name: Ensure the subnet for the Kubernetes cluster is present.
   shell: >
-    az network vnet subnet list -g "{{ azure_resource_group }}" --vnet-name kthw -o json
-  register: cmd
+    az network vnet subnet list -g "{{ azure_resource_group }}" --vnet-name kthw -o json | \
+      jq -r '.[] | select(.name == "kthw-subnet") | .addressPrefix'
+  register: result
   ignore_errors: true
 
 - set_fact:
-    result: "{{ ( cmd.stdout | from_json ) if cmd.rc == 0 else '{}' }}"
-
-- set_fact:
     want: '10.240.0.0/24'
-    got: "{{ (result | selectattr('name','equalto','kthw-subnet') | list | first).addressPrefix if result }}"
+    got: "{{ result.stdout }}"
   ignore_errors: true
 
 - fail:
     msg: "Expected '{{ want }}' but got '{{ got }}'. Full output: '{{ result }}'"
   when: want != got
 
+- name: Ensure that Kubernetes cluster NSGs have been created.
+  shell: >
+    az network nsg list -g "{{ azure_resource_group }}" | \
+      jq -r '.[] | select(.name == "kthw-nsg") | .securityRules'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - "prio 1 allow tcp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 2 allow tcp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 3 allow udp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 4 allow udp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 5 allow icmp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 6 allow icmp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 7 allow tcp:22 from 0.0.0.0/0 to 10.240.0.0/24"
+      - "prio 8 allow tcp:6443 from 0.0.0.0/0 to 10.240.0.0/24"
+      - "prio 9 allow icmp from 0.0.0.0/0 to 10.240.0.0/24"
+    got: "{{ result.stdout }}"
+  ignore_errors: true
+
+- fail:
+    msg: "Expected '{{ want }}' but got '{{ got }}'. Full output: '{{ result }}'"
+  when: want != got
