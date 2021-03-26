@@ -1,0 +1,56 @@
+---
+- name: Autoregister providers as needed
+  shell: az config set extension.use_dynamic_install=yes_without_prompt
+
+# 10.128.0.0/9 is what Google Cloud uses for auto subnets, so that's what we'll
+# try using here.
+# https://cloud.google.com/vpc/docs/vpc#subnet-ranges
+- name: Create a virtual network for our Kubernetes cluster
+  shell: >
+    az network vnet create -g "{{ azure_resource_group }}" -n kthw \
+      --address-prefixes 10.128.0.0/9 \
+      --subnet-name kthw-subnet \
+      --subnet-prefixes 10.240.0.0/24 2>&1 | tee /tmp/run
+
+- name: Create the NSG for this vNet
+  shell: >
+    az network nsg create -g "{{ azure_resource_group }}" -n kthw-nsg
+
+- name: Create NSG rules
+  shell: >-
+    name="$(echo "{{ item }}" | awk '{% raw %}{ print $1 }{% endraw %}')"; \
+    priority="$(echo "{{ item }}" | awk '{% raw %}{ print $2 }{% endraw %}')"; \
+    permission="$(echo "{{ item }}" | awk '{% raw %}{ print $3 }{% endraw %}')"; \
+    protocol_and_port="$(echo "{{ item }}" | awk '{% raw %}{ print $4 }{% endraw %}')"; \
+    if echo "$protocol_and_port" | grep -q ':'; \
+    then \
+      protocol=$(echo "$protocol_and_port" | cut -f1 -d ':'); \
+      port=$(echo "$protocol_and_port" | cut -f2 -d ':'); \
+    else \
+      protocol="$(echo "$protocol_and_port" | cut -f1 -d ':')"; \
+      port="*"; \
+    fi; \
+    from="$(echo "{{ item }}" | awk '{% raw %}{ print $6 }{% endraw %}')"; \
+    to="$(echo "{{ item }}" | awk '{% raw %}{ print $8 }{% endraw %}')"; \
+    cmd="az network nsg rule create -g kthw --nsg-name kthw-nsg
+      --name $name  
+      --priority $priority
+      --access $permission
+      --source-address-prefixes $from
+      --source-port-ranges $port
+      --protocol $protocol
+      --destination-address-prefixes $to
+      --destination-port-ranges $port"; \
+    echo "Going to run: $cmd" >> /tmp/commands.log ; \
+    $cmd 2>&1 | tee -a /tmp/commands.log
+  with_items:
+    -  "allow_tcp_service_cidr_to_vnet 101 allow tcp from 10.200.0.0/16 to 10.240.0.0/24"
+    -  "allow_udp_service_cidr_to_vnet 103 allow udp from 10.200.0.0/16 to 10.240.0.0/24"
+    -  "allow_icmp_service_cidr_to_vnet 105 allow icmp from 10.200.0.0/16 to 10.240.0.0/24"
+    -  "allow_tcp_vnet_to_service_cidr 102 allow tcp from 10.240.0.0/24 to 10.240.0.0/16"
+    -  "allow_udp_vnet_to_service_cidr 104 allow udp from 10.240.0.0/24 to 10.240.0.0/16"
+    -  "allow_icmp_vnet_to_service_cidr 106 allow icmp from 10.240.0.0/24 to 10.240.0.0/16"
+    -  "allow_ssh_inet_to_vnet 107 allow tcp:22 from 0.0.0.0/0 to 10.240.0.0/24"
+    -  "allow_kubeapi_inet_to_vnet 108 allow tcp:6443 from 0.0.0.0/0 to 10.240.0.0/24"
+    -  "allow_icmp_inet_to_vnet 109 allow icmp from 0.0.0.0/0 to 10.240.0.0/24"
+

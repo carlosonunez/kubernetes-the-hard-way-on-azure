@@ -10,16 +10,31 @@ services:
       context: .
     volumes:
       - $PWD/authorized_keys:/root/.ssh/authorized_keys
+      - $PWD/.azure:/root/.azure
     ports:
       - "2222:22"
     networks:
       test-network:
         aliases:
           - test_machine
+  # A convenient service for running Azure commands as kthw-sp.
+  kthw_az:
+    build:
+      dockerfile: test-container.Dockerfile
+      context: .
+    volumes:
+      - $PWD/authorized_keys:/root/.ssh/authorized_keys
+      - $PWD/.azure:/root/.azure
+    networks:
+      test-network:
+        aliases:
+          - test_machine
+    entrypoint:
+      - "az"
   # This container will run tests through Ansible playbooks.
   tests:
     build:
-      dockerfile: tests.Dockerfile
+      dockerfile: ansible.Dockerfile
       context: .
     environment:
       ANSIBLE_HOST_KEY_CHECKING: "false"
@@ -27,6 +42,22 @@ services:
     networks:
       - test-network
     volumes:
+      - $PWD/.azure:/root/.azure
       - $PWD/id_rsa:/ssh_key
       - $PWD/tests:/tests
       - $PWD/tests.yaml:/tests.yaml
+  # This container will run deployment steps through Ansible playbooks.
+  deployer:
+    build:
+      dockerfile: ansible.Dockerfile
+      context: .
+    environment:
+      ANSIBLE_HOST_KEY_CHECKING: "false"
+      ANSIBLE_ROLES_PATH: "/deploy"
+    networks:
+      - test-network
+    volumes:
+      - $PWD/.azure:/root/.azure
+      - $PWD/id_rsa:/ssh_key
+      - $PWD/deploy:/deploy
+      - $PWD/deploy.yaml:/deploy.yaml

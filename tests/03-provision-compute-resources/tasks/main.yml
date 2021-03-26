@@ -1,0 +1,56 @@
+---
+
+- name: Ensure the subnet for the Kubernetes cluster is present.
+  shell: >
+    az network vnet subnet list -g "{{ azure_resource_group }}" --vnet-name kthw -o json | \
+      jq -r '.[] | select(.name == "kthw-subnet") | .addressPrefix'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: '10.240.0.0/24'
+    got: "{{ result.stdout }}"
+  ignore_errors: true
+
+- fail:
+    msg: "Expected '{{ want }}' but got '{{ got }}'. Full output: '{{ result }}'"
+  when: want != got
+
+- name: Ensure that Kubernetes cluster NSGs have been created.
+  shell: >-
+    az network nsg show -g "{{ azure_resource_group }}" -n kthw-nsg | \
+      jq -r '[ .securityRules[] |
+      "prio " + (.priority | tostring) +
+      " " + (.access | ascii_downcase) +
+      " " + (if .destinationPortRange != "*"
+            then ((.protocol | ascii_downcase) + ":" + .destinationPortRange)
+            else (.protocol | ascii_downcase)
+            end) +
+      " from " + .sourceAddressPrefix +
+      " to " + .destinationAddressPrefix ]'
+
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - "prio 101 allow tcp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 102 allow tcp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 103 allow udp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 104 allow udp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 105 allow icmp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 106 allow icmp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 107 allow tcp:22 from 0.0.0.0/0 to 10.240.0.0/24"
+      - "prio 108 allow tcp:6443 from 0.0.0.0/0 to 10.240.0.0/24"
+      - "prio 109 allow icmp from 0.0.0.0/0 to 10.240.0.0/24"
+    got: "{{ result.stdout | from_json }}"
+  ignore_errors: true
+
+- set_fact:
+    difference: "{{ want | difference(got) }}"
+
+- fail:
+    msg: >-
+      "Expected NSG rules differ from actual NSG rules.
+       Difference: {{ difference }}. Want: {{want | sort | join(',')}}. Got {{got | sort | join(',')}}"
+  when: difference | length > 0

@@ -3,3 +3,4 @@
 !.env.example
 authorized_keys
 id_rsa*
+.azure/
