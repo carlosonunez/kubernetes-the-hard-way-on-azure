@@ -7,17 +7,27 @@
 # https://cloud.google.com/vpc/docs/vpc#subnet-ranges
 - name: Create a virtual network for our Kubernetes cluster
   shell: >
+    cache_key="/cache/vnet_kthw"; \
+    test -f "$cache_key" && exit 0; \
     az network vnet create -g "{{ azure_resource_group }}" -n kthw \
       --address-prefixes 10.128.0.0/9 \
       --subnet-name kthw-subnet \
-      --subnet-prefixes 10.240.0.0/24 2>&1 | tee /tmp/run
+      --subnet-prefixes 10.240.0.0/24 2>&1 && touch "$cache_key"
 
 - name: Create the NSG for this vNet
   shell: >
-    az network nsg create -g "{{ azure_resource_group }}" -n kthw-nsg
+    cache_key="/cache/kthw-nsg"; \
+    test -f "$cache_key" && exit 0; \
+    az network nsg create -g "{{ azure_resource_group }}" -n kthw-nsg && touch "$cache_key"
 
 - name: Create NSG rules
   shell: >-
+    cache_key="/cache/nsg_$(echo "{{ item }}" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
+    if test -f "$cache_key"; \
+    then \
+      >&2 echo "NSG rule already deployed, skipping: {{ item }}"; \
+      exit 0; \
+    fi; \
     name="$(echo "{{ item }}" | awk '{% raw %}{ print $1 }{% endraw %}')"; \
     priority="$(echo "{{ item }}" | awk '{% raw %}{ print $2 }{% endraw %}')"; \
     permission="$(echo "{{ item }}" | awk '{% raw %}{ print $3 }{% endraw %}')"; \
@@ -42,7 +52,7 @@
       --destination-address-prefixes $to
       --destination-port-ranges $port"; \
     echo "Going to run: $cmd" >> /tmp/commands.log ; \
-    $cmd 2>&1 | tee -a /tmp/commands.log
+    $cmd 2>&1 | tee -a /tmp/commands.log && touch "$cache_key";
   with_items:
     -  "allow_tcp_service_cidr_to_vnet 101 allow tcp from 10.200.0.0/16 to 10.240.0.0/24"
     -  "allow_udp_service_cidr_to_vnet 103 allow udp from 10.200.0.0/16 to 10.240.0.0/24"
@@ -54,3 +64,36 @@
     -  "allow_kubeapi_inet_to_vnet 108 allow tcp:6443 from 0.0.0.0/0 to 10.240.0.0/24"
     -  "allow_icmp_inet_to_vnet 109 allow icmp from 0.0.0.0/0 to 10.240.0.0/24"
 
+- name: Create an SSH key for our nodes if one doesn't exist
+  stat:
+    path: /secrets/kthw_ssh_key
+  register: node_ssh_key
+
+- shell: ssh-keygen -t rsa -b 2048 -f /secrets/kthw_ssh_key -q -N ''
+  when: not node_ssh_key.stat.exists
+
+- name: Create the control plane
+  shell: >-
+    vm_name="kthw-control-plane-{{ item }}"; \
+    cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
+    if test -f "$cache_key"; \
+    then \
+      >&2 echo "INFO: VM already created; skipping: $vm_name"; \
+      exit 0; \
+    fi; \
+    az vm create -g '{{ azure_resource_group }}' \
+      --name "$vm_name" \
+      --computer-name "$vm_name" \
+      --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
+      --priority "Spot" \
+      --eviction-policy "Deallocate" \
+      --max-price "0.04" \
+      --size "Standard_D2s_v4" \
+      --private-ip-address "10.240.0.1{{ item }}" \
+      --subnet kthw-subnet \
+      --vnet-name kthw \
+      --os-disk-name "kthw-cp-disk-{{ item }}" \
+      --os-disk-size-gb "200" \
+      --admin-username "ubuntu" \
+      --ssh-key-values /secrets/kthw_ssh_key.pub && touch "$cache_key"
+  with_sequence: start=1 count=3

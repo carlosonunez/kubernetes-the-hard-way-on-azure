@@ -11,6 +11,8 @@ services:
     volumes:
       - $PWD/authorized_keys:/root/.ssh/authorized_keys
       - $PWD/.azure:/root/.azure
+      - $PWD/secrets:/secrets
+      - $PWD/cache:/cache # Azure is slow as hell; we need to cache some operations
     ports:
       - "2222:22"
     networks:
@@ -46,6 +48,8 @@ services:
       - $PWD/id_rsa:/ssh_key
       - $PWD/tests:/tests
       - $PWD/tests.yaml:/tests.yaml
+      - $PWD/secrets:/secrets
+      - $PWD/cache:/cache # Azure is slow as hell; we need to cache some operations
   # This container will run deployment steps through Ansible playbooks.
   deployer:
     build:
@@ -61,3 +65,5 @@ services:
       - $PWD/id_rsa:/ssh_key
       - $PWD/deploy:/deploy
       - $PWD/deploy.yaml:/deploy.yaml
+      - $PWD/secrets:/secrets
+      - $PWD/cache:/cache # Azure is slow as hell; we need to cache some operations

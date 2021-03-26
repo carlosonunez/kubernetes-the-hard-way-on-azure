@@ -54,3 +54,15 @@
       "Expected NSG rules differ from actual NSG rules.
        Difference: {{ difference }}. Want: {{want | sort | join(',')}}. Got {{got | sort | join(',')}}"
   when: difference | length > 0
+
+- name: Ensure that the control plane is set up
+  shell: az vm list | jq -r '[.[] | select(.name | contains("kthw-control-plane")) | .name] | length'
+  register: result
+
+- set_fact:
+    want: "3"
+    got: "{{ result.stdout }}"
+ 
+- fail:
+    msg: "Wanted {{ want }}; got {{ got }}"
+  when: want != got
