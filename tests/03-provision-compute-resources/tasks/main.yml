@@ -66,3 +66,15 @@
 - fail:
     msg: "Wanted {{ want }}; got {{ got }}"
   when: want != got
+
+- name: Ensure that the workers are set up
+  shell: az vm list | jq -r '[.[] | select(.name | contains("kthw-worker")) | .name] | length'
+  register: result
+
+- set_fact:
+    want: "2" # this should be 3 but I ran into quota issues :(
+    got: "{{ result.stdout }}"
+ 
+- fail:
+    msg: "Wanted {{ want }}; got {{ got }}"
+  when: want != got
