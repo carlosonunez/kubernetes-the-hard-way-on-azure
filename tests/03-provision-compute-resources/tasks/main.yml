@@ -17,26 +17,40 @@
   when: want != got
 
 - name: Ensure that Kubernetes cluster NSGs have been created.
-  shell: >
-    az network nsg list -g "{{ azure_resource_group }}" | \
-      jq -r '.[] | select(.name == "kthw-nsg") | .securityRules'
+  shell: >-
+    az network nsg show -g "{{ azure_resource_group }}" -n kthw-nsg | \
+      jq -r '[ .securityRules[] |
+      "prio " + (.priority | tostring) +
+      " " + (.access | ascii_downcase) +
+      " " + (if .destinationPortRange != "*"
+            then ((.protocol | ascii_downcase) + ":" + .destinationPortRange)
+            else (.protocol | ascii_downcase)
+            end) +
+      " from " + .sourceAddressPrefix +
+      " to " + .destinationAddressPrefix ]'
+
   register: result
   ignore_errors: true
 
 - set_fact:
     want:
-      - "prio 1 allow tcp from 10.200.0.0/16 to 10.240.0.0/24"
-      - "prio 2 allow tcp from 10.240.0.0/24 to 10.240.0.0/16"
-      - "prio 3 allow udp from 10.200.0.0/16 to 10.240.0.0/24"
-      - "prio 4 allow udp from 10.240.0.0/24 to 10.240.0.0/16"
-      - "prio 5 allow icmp from 10.200.0.0/16 to 10.240.0.0/24"
-      - "prio 6 allow icmp from 10.240.0.0/24 to 10.240.0.0/16"
-      - "prio 7 allow tcp:22 from 0.0.0.0/0 to 10.240.0.0/24"
-      - "prio 8 allow tcp:6443 from 0.0.0.0/0 to 10.240.0.0/24"
-      - "prio 9 allow icmp from 0.0.0.0/0 to 10.240.0.0/24"
-    got: "{{ result.stdout }}"
+      - "prio 101 allow tcp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 102 allow tcp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 103 allow udp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 104 allow udp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 105 allow icmp from 10.200.0.0/16 to 10.240.0.0/24"
+      - "prio 106 allow icmp from 10.240.0.0/24 to 10.240.0.0/16"
+      - "prio 107 allow tcp:22 from 0.0.0.0/0 to 10.240.0.0/24"
+      - "prio 108 allow tcp:6443 from 0.0.0.0/0 to 10.240.0.0/24"
+      - "prio 109 allow icmp from 0.0.0.0/0 to 10.240.0.0/24"
+    got: "{{ result.stdout | from_json }}"
   ignore_errors: true
 
+- set_fact:
+    difference: "{{ want | difference(got) }}"
+
 - fail:
-    msg: "Expected '{{ want }}' but got '{{ got }}'. Full output: '{{ result }}'"
-  when: want != got
+    msg: >-
+      "Expected NSG rules differ from actual NSG rules.
+       Difference: {{ difference }}. Want: {{want | sort | join(',')}}. Got {{got | sort | join(',')}}"
+  when: difference | length > 0
