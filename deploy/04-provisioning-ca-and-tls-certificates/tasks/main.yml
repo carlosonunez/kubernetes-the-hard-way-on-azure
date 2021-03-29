@@ -8,3 +8,20 @@
     - ca-csr.yaml.j2
 
 - shell: cfssl gencert -initca /secrets/ca-csr.json | cfssljson -bare /secrets/ca
+
+- name: Create other certificates
+  copy:
+    dest: "/secrets/{{ item.split('.')[0] }}.json"
+    content: "{{ lookup('template', item) | from_yaml | to_json }}"
+  with_items:
+    - admin-csr.yaml.j2
+
+- shell: >-
+    cfssl gencert \
+      -ca=/secrets/ca.pem \
+      -ca-key=/secrets/ca-key.pem  \
+      -config=/secrets/ca-config.json \
+      -profile=kubernetes \
+      "/secrets/{{ item }}-csr.json" | cfssljson -bare "/secrets/{{ item }}"
+  with_items:
+    - admin

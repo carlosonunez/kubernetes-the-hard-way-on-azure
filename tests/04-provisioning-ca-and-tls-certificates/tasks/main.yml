@@ -1,21 +1,4 @@
 ---
-- name: Ensure the CA root certificate and private key exist
-  shell: find /secrets -name "ca*.pem"
-  register: result
-
-- set_fact:
-    want:
-      - /secrets/ca.pem
-      - /secrets/ca-key.pem
-    got: "{{ result.stdout.split('\n') }}"
-
-- set_fact:
-    diff: "{{ want | difference(got) }}"
-
-- fail:
-    msg: "want: {{ want }}; got: {{ got }}; diff: {{ diff }}"
-  when: diff | length > 0
-
 - name: Ensure the CA root certificate is correct
   shell: >-
     openssl x509 -in /secrets/ca.pem 2>/dev/null -text -noout | \
@@ -31,3 +14,17 @@
 - fail:
     msg: "want: {{ want }}, got: {{ got }}"
   when: want != got
+
+- name: Ensure that admin certificate is correct and has the CA in its chain
+  shell: >-
+    openssl verify -CAfile /secrets/ca.pem /secrets/admin.pem
+  register: result
+
+- set_fact:
+    want: "/secrets/admin.pem: OK"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want: {{ want }}, got: {{ got }}"
+  when: want != got
+
