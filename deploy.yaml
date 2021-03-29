@@ -6,5 +6,6 @@
   vars:
     ansible_python_interpreter: "/usr/bin/env python"
   roles:
-    - 01-prerequisites
-    - 03-provision-compute-resources
+#    - 01-prerequisites
+#    - 03-provision-compute-resources
+    - 04-provisioning-ca-and-tls-certificates

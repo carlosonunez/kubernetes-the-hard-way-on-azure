@@ -1,0 +1,10 @@
+---
+- name: Create the CA certificate and private key
+  copy:
+    dest: "/secrets/{{ item.split('.')[0] }}.json"
+    content: "{{ lookup('template', item) | from_yaml | to_json }}"
+  with_items:
+    - ca-config.yaml.j2
+    - ca-csr.yaml.j2
+
+- shell: cfssl gencert -initca /secrets/ca-csr.json | cfssljson -bare /secrets/ca
