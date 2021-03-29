@@ -107,6 +107,8 @@ in Google Cloud. We will also provision them from the
 [Spot Market](https://docs.microsoft.com/en-us/azure/virtual-machines/spot-vms)
 to reduce the amount of money you spend (or credits you burn) on this lab.
 
+⚠️  **NOTE**: Deploying spot control plane nodes this way is not recommended for production use. ⚠️
+
 First, let's create a keypair to log into our instances with:
 
 ```sh
@@ -138,4 +140,57 @@ do
 done
 ```
 
-⚠️  **NOTE**: Deploying spot control plane nodes this way is not recommended for production use. ⚠️
+Then we'll do the same for our worker nodes:
+
+```sh
+for i in $(seq 1 3)
+do
+  az vm create -g kthw \
+    --name "kthw-worker-$i" \
+    --computer-name "kthw-control-plane-$i" \
+    --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
+    --priority "Spot" \
+    --max-price "0.04" \
+    --eviction-policy "Deallocate" \
+    --size "Standard_D2s_v4" \
+    --private-ip-address "10.240.0.1$i" \
+    --subnet kthw-subnet \
+    --vnet-name kthw \
+    --os-disk-name "kthw-cp-disk-$i" \
+    --os-disk-size-gb 200 \
+    --admin-username ubuntu \
+    --ssh-key-values kthw_ssh_key.pub
+done
+```
+
+Next, we will enable IP forwarding on all of the vNICs attached to all nodes in our cluster:
+
+```sh
+for node in control-plane worker
+do
+  for i in $(seq 1 3)
+  do
+    az network nic update -g kthw \
+      --name "kthw-$node-$i" \
+      --ip-forwarding true
+  done
+done
+```
+
+Then we will wrap up this lab by confirming that all nodes in our cluster can be SSHed into:
+
+```sh
+$ for ip in $(az network public-ip list -g kthw | jq -r .[].ipAddress | grep -v "null"); \
+  do \
+    ssh -i kthw_ssh_key -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        "ubuntu@$ip" \
+        echo '$(hostname): $(whoami)' 2>/dev/null; \
+  done | grep "ubuntu"
+kthw-control-plane-1: ubuntu
+kthw-control-plane-2: ubuntu
+kthw-control-plane-3: ubuntu
+kthw-worker-1: ubuntu
+kthw-worker-2: ubuntu
+kthw-worker-3: ubuntu
+```

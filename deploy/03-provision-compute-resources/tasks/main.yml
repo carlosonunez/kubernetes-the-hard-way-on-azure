@@ -120,4 +120,20 @@
       --os-disk-size-gb "200" \
       --admin-username "ubuntu" \
       --ssh-key-values /secrets/kthw_ssh_key.pub && touch "$cache_key"
-  with_sequence: start=1 count=3
+  with_sequence: start=1 count=2
+
+- name: Configure IP forwarding on all NICs in the cluster
+  shell:
+    vm_name="kthw-nic-{{ item }}"; \
+    cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
+    test -f "$cache_key" && exit 0; \
+    az network nic update -g '{{ azure_resource_group }}' \
+      --name "{{ item }}" \
+      --ip-forwarding true && touch "$cache_key"
+  with_items:
+    - kthw-control-plane-1VMNic
+    - kthw-control-plane-2VMNic
+    - kthw-control-plane-3VMNic
+    - kthw-worker-1VMNic
+    - kthw-worker-2VMNic
+    - kthw-worker-3VMNic
