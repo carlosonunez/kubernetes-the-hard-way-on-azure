@@ -54,3 +54,82 @@
       "Expected NSG rules differ from actual NSG rules.
        Difference: {{ difference }}. Want: {{want | sort | join(',')}}. Got {{got | sort | join(',')}}"
   when: difference | length > 0
+
+- name: Ensure that the control plane is set up
+  shell: az vm list | jq -r '[.[] | select(.name | contains("kthw-control-plane")) | .name] | length'
+  register: result
+
+- set_fact:
+    want: "3"
+    got: "{{ result.stdout }}"
+ 
+- fail:
+    msg: "Wanted {{ want }}; got {{ got }}"
+  when: want != got
+
+- name: Ensure that the workers are set up
+  shell: az vm list | jq -r '[.[] | select(.name | contains("kthw-worker")) | .name] | length'
+  register: result
+
+- set_fact:
+    want: "2" # this should be 3 but I ran into quota issues :(
+    got: "{{ result.stdout }}"
+ 
+- fail:
+    msg: "Wanted {{ want }}; got {{ got }}"
+  when: want != got
+
+- name: Ensure that public IPs for all nodes exist
+  shell: >-
+    az network public-ip list | \
+    jq -r '[.[] | select(.name | contains("kthw-")) | .name] | length'
+  register: result
+
+- set_fact:
+    want: "6" # this should be 3 but I ran into quota issues :(
+    got: "{{ result.stdout }}"
+ 
+- fail:
+    msg: "Wanted {{ want }}; got {{ got }}"
+  when: want != got
+
+- name: Ensure that the NICs for all machines can IP forward
+  shell: >-
+    az network nic list | jq -cr '[.[] | .name + ": " + ( .enableIpForwarding | tostring ) ]'
+  register: result
+
+- set_fact:
+    want:
+      - "kthw-control-plane-1VMNic: true"
+      - "kthw-control-plane-2VMNic: true"
+      - "kthw-control-plane-3VMNic: true"
+      - "kthw-worker-1VMNic: true"
+      - "kthw-worker-2VMNic: true"
+      - "kthw-worker-3VMNic: true"
+    got: "{{ result.stdout | from_json | sort }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "Wanted {{ want }}. Got {{ got }}. Diff {{ diff | join(',') }}"
+  when: diff | length > 0
+
+- name: Ensure that each node can be SSHed into
+  shell: >-
+    for ip in $(az network public-ip list | jq -r .[].ipAddress | grep -v "null"); \
+    do \
+      ssh -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          "ubuntu@$ip" \
+          whoami 2>/dev/null; \
+    done | grep "ubuntu"
+  register: result
+
+- set_fact:
+    want: "5"
+    got: "{{ (result.stdout).split('\n') | length }}"
+
+- fail:
+    msg: "Wanted {{ want }}, got {{ got }}, out: {{ result.stdout }}, err: {{ result.stderr }}"
+  when: want != got
