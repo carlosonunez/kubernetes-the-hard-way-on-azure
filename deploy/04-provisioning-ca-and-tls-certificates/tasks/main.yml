@@ -9,12 +9,10 @@
 
 - shell: cfssl gencert -initca /secrets/ca-csr.json | cfssljson -bare /secrets/ca
 
-- name: Create other certificates
+- name: Create admin certificates
   copy:
-    dest: "/secrets/{{ item.split('.')[0] }}.json"
-    content: "{{ lookup('template', item) | from_yaml | to_json }}"
-  with_items:
-    - admin-csr.yaml.j2
+    dest: "/secrets/admin.json"
+    content: "{{ lookup('template', 'admin-csr.yaml.j2') | from_yaml | to_json }}"
 
 - shell: >-
     cfssl gencert \
@@ -22,6 +20,35 @@
       -ca-key=/secrets/ca-key.pem  \
       -config=/secrets/ca-config.json \
       -profile=kubernetes \
-      "/secrets/{{ item }}-csr.json" | cfssljson -bare "/secrets/{{ item }}"
-  with_items:
-    - admin
+      "/secrets/admin-csr.json" | cfssljson -bare "/secrets/admin"
+
+- name: Create worker certificates
+  copy:
+    dest: "/secrets/kthw-worker-{{ item }}-csr.json"
+    content: "{{ lookup('template', 'kubelet-csr.yaml.j2') | from_yaml | to_json }}"
+  with_sequence: start=1 count=3
+
+- shell: >-
+    if test -f "/cache/internal-ip-{{ item }}" && test -f "/cache/external-ip-{{ item }}"; \
+    then \
+      internal_ip=$(cat "/cache/internal-ip-{{ item }}"); \
+      external_ip=$(cat "/cache/external-ip-{{ item }}"); \
+    else \
+      internal_ip=$(\
+        az network nic show -n "kthw-worker-{{ item }}VMNic" -g '{{ azure_resource_group }}' | \
+        jq -r .ipConfigurations.privateIpAddress); \
+      external_ip=$(\
+        az network nic show -n "kthw-worker-{{ item }}PublicIP" -g '{{ azure_resource_group }}' | \
+        jq -r .ipAddress); \
+      printf "$internal_ip" > "/cache/internal-ip-{{ item }}"; \
+      printf "$external_ip" > "/cache/external-ip-{{ item }}"; \
+    fi; \
+    hostname=$(hostname); \
+    cfssl gencert \
+      -ca=/secrets/ca.pem \
+      -ca-key=/secrets/ca-key.pem  \
+      -config=/secrets/ca-config.json \
+      -hostname="$hostname,$external_ip,$internal_ip" \
+      -profile=kubernetes \
+      "/secrets/kthw-worker-{{ item }}-csr.json" | cfssljson -bare "/secrets/kthw-worker-{{ item }}"
+  with_sequence: start=1 count=3

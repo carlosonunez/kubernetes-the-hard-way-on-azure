@@ -28,3 +28,25 @@
     msg: "want: {{ want }}, got: {{ got }}"
   when: want != got
 
+- name: Ensure that each worker's cert is present and validates
+  shell: >-
+    openssl verify -CAfile /secrets/ca.pem "/secrets/kthw-worker-{{ item }}.pem"
+  register: result
+  with_sequence: start=1 count=3
+
+- debug:
+    msg: "{{ result }}"
+
+- set_fact:
+    want: "/secrets/kthw-worker-{{ item }}.pem: OK"
+    got: "{{ result.results }}"
+  with_sequence: start=1 count=3
+  register: test_results
+
+- debug:
+    msg: "{{ test_results }}"
+
+- fail:
+    msg: "want: {{ test_results.results }}, got: {{ item.got }}"
+  when: want != got
+  with_sequence: start=1 count=3
