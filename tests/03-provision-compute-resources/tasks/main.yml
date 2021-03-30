@@ -1,5 +1,18 @@
 ---
 
+- name: Ensure that a public IP for the Kuvernetes API server has been created
+  shell: >
+    az network public-ip list | \
+      jq -r '.[] | select(.name == "kubernetes-the-hard-way") | .ipAddress'
+  register: result
+
+- set_fact:
+    ips_found: "{{ result.stdout | regex_findall('[0-9\\.]{4}') }}"
+
+- fail:
+    msg: "Wanted an IP address, but got none. Output: {{ result.stdout }}. Found: {{ ips_found }}"
+  when: not ips_found
+
 - name: Ensure the subnet for the Kubernetes cluster is present.
   shell: >
     az network vnet subnet list -g "{{ azure_resource_group }}" --vnet-name kthw -o json | \
@@ -133,3 +146,4 @@
 - fail:
     msg: "Wanted {{ want }}, got {{ got }}, out: {{ result.stdout }}, err: {{ result.stderr }}"
   when: want != got
+
