@@ -44,3 +44,45 @@ EOF
     "${instance}-csr.json" | cfssljson -bare "${instance}"
 done
 ```
+
+## Distribute the Client and Server Certificates
+
+Use these commands for the worker:
+
+```sh
+for idx in $(seq 1 3);
+do
+  for ip in $(az network public-ip list | \
+    jq -r '.[] | select(.name | contains("kthw-worker-$idx")) | .ipAddress' \
+    | grep -v "null");
+  do
+    for file in "ca.pem" "kthw-worker-$idx.pem" "kthw-worker-$idx-key.pem";
+    do
+      scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          "/secrets/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key";
+    done;
+  done;
+done
+```
+
+and use these commands for the controller:
+
+```sh
+for idx in $(seq 1 3);
+do
+  for ip in $(az network public-ip list | \
+    jq -r '.[] | select(.name | contains("kthw-control-plane-$idx")) | .ipAddress' \
+    | grep -v "null");
+  do
+    for file in "ca.pem" "ca-key.pem" "kubernetes.pem" "kubernetes-key.pem" \
+      "service-account.pem" "service-account-key.pem"
+    do
+      scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          "/secrets/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key";
+    done;
+  done;
+done
+```
+

@@ -97,3 +97,48 @@
       -hostname="10.32.0.1,$internal_ips,$api_server_ip,127.0.0.1,$kubernetes_hostnames" \
       -profile=kubernetes \
       "/secrets/kubernetes-csr.json" | cfssljson -bare "/secrets/kubernetes"
+
+- name: Copy worker certs into workers
+  shell: 
+    cache_key="/cache/scp-worker-{{ item }}";
+    if test -f "$cache_key";
+    then return 0;
+    fi;
+    for ip in $(az network public-ip list | \
+      jq -r '.[] | select(.name | contains("kthw-worker-{{ item }}")) | .ipAddress' \
+      | grep -v "null");
+    do
+      for file in "ca.pem" "kthw-worker-{{ item }}.pem" "kthw-worker-{{ item }}-key.pem";
+      do
+        scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "/secrets/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key";
+      done;
+    done;
+  with_sequence: start=1 count=2
+  register: result
+
+- name: Copy controller certs into controllers
+  shell: 
+    cache_key="/cache/scp-controller-{{ item }}"; \
+    for ip in $(az network public-ip list | \
+      jq -r '.[] | select(.name | contains("kthw-control-plane-{{ item }}")) | .ipAddress' \
+      | grep -v "null"); \
+    if test -f "$cache_key";
+    then return 0;
+    fi;
+    do \
+      for file in "ca.pem" \
+        "ca-key.pem" \
+        "kubernetes.pem" \
+        "kubernetes-key.pem" \
+        "service-account.pem" \
+        "service-account-key.pem"; \
+      do \
+        scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "/secrets/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
+      done; \
+    done;
+  with_sequence: start=1 count=3
+  register: result
