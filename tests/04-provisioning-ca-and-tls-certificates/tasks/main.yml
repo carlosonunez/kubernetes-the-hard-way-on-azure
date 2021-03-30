@@ -88,3 +88,60 @@
     msg: "want: {{ want }}, got: {{ got }}"
   when: want != got
 
+- name: Ensure that the Kubernetes API server certificate is correct and has the CA in its chain
+  shell: >-
+    openssl verify -CAfile /secrets/ca.pem /secrets/kubernetes.pem
+  register: result
+
+- set_fact:
+    want: "/secrets/kubernetes.pem: OK"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want: {{ want }}, got: {{ got }}"
+  when: want != got
+
+- name: Ensure that the Kubernetes API server certificate has the correct SANs
+  shell: >-
+    control_plane_ips=$(az network nic list -g '{{ azure_resource_group }}' | \
+      jq -r '[.[] | select(.name | contains("kthw-control-plane")) | .ipConfigurations[] | .privateIpAddress] | join(",")'); \
+    kube_public_ip=$(az network public-ip show -g '{{ azure_resource_group }}' -n "kubernetes-the-hard-way" | \
+      jq -r '.ipAddress'); \
+    echo "10.32.0.1,127.0.0.1,${control_plane_ips},${kube_public_ip},kubernetes.default.svc.cluster.local,kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster,kubernetes.default.svc.cluster.local,kubernetes.svc.cluster.local" | \
+    tr "," "\n" | \
+    sort -u;
+  register: want_result
+
+- shell: >-
+    openssl x509 -in /secrets/kubernetes.pem -noout -text | \
+    grep "DNS:" | \
+    tr ',' '\n' | \
+    sed 's/.*DNS://g' | \
+    sed 's/.*IP Address://g' | \
+    sort -u;
+  register: got_result
+
+- set_fact:
+    want: "{{ want_result.stdout.split('\n') }}"
+    got: "{{ got_result.stdout.split('\n') }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want: {{ want }}; got: {{ got }}; diff: {{ diff }}"
+  when: diff | length > 0
+
+- name: Ensure that service-account certificate is correct and has the CA in its chain
+  shell: >-
+    openssl verify -CAfile /secrets/ca.pem /secrets/service-account.pem
+  register: result
+
+- set_fact:
+    want: "/secrets/service-account.pem: OK"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want: {{ want }}, got: {{ got }}"
+  when: want != got
+

@@ -99,6 +99,17 @@ do
 done
 ```
 
+## Kubernetes Public IP Address
+
+To allocate the static IP that we will use to front the Kubernetes API server with,
+run this command:
+
+```sh
+az network public-ip create -g 'kthw' \
+  --name "kubernetes-the-hard-way" \
+  --allocation-method "Static"
+```
+
 ## Compute Instances
 ---
 

@@ -18,6 +18,7 @@
     - kube-proxy
     - kube-controller-manager
     - kube-scheduler
+    - service-account
 
 - shell: >-
     cfssl gencert \
@@ -31,6 +32,7 @@
     - kube-proxy
     - kube-controller-manager
     - kube-scheduler
+    - service-account
 
 - name: Create worker certificates
   copy:
@@ -62,3 +64,36 @@
       -profile=kubernetes \
       "/secrets/kthw-worker-{{ item }}-csr.json" | cfssljson -bare "/secrets/kthw-worker-{{ item }}"
   with_sequence: start=1 count=3
+
+- name: Create api-server certificate
+  copy:
+    dest: "/secrets/kubernetes-csr.json"
+    content: "{{ lookup('template', 'kubernetes-csr.yaml.j2') | from_yaml | to_json }}"
+
+- shell: >-
+    kubernetes_hostnames="kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster,kubernetes.default.svc.cluster.local,kubernetes.svc.cluster.local"; \
+    internal_cache_key="/cache/internal-ip-api-server"; \
+    external_cache_key="/cache/external-ip-api-server"; \
+    if test -f "$internal_cache_key"; \
+    then \
+      internal_ips=$(cat "$internal_cache_key"); \
+    else \
+      internal_ips=$(az network nic list -g kthw | \
+        jq -r '[.[] | select(.name | contains("kthw-control-plane")) | .ipConfigurations[].privateIpAddress] | join(",")') && \
+      echo "$internal_ips" > "$internal_cache_key"; \
+    fi; \
+    if test -f "$external_cache_key"; \
+    then \
+      api_server_ip=$(cat "$external_cache_key"); \
+    else \
+      api_server_ip=$(az network public-ip list -g "{{ azure_resource_group }}" | \
+        jq -r '.[] | select(.name == "kubernetes-the-hard-way") | .ipAddress') && \
+        echo "$api_server_ip" > "$external_cache_key"; \
+    fi; \
+    cfssl gencert \
+      -ca=/secrets/ca.pem \
+      -ca-key=/secrets/ca-key.pem  \
+      -config=/secrets/ca-config.json \
+      -hostname="10.32.0.1,$internal_ips,$api_server_ip,127.0.0.1,$kubernetes_hostnames" \
+      -profile=kubernetes \
+      "/secrets/kubernetes-csr.json" | cfssljson -bare "/secrets/kubernetes"
