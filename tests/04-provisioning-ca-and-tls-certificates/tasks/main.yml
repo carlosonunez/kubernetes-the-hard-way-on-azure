@@ -62,3 +62,29 @@
     msg: "want: {{ want }}, got: {{ got }}"
   when: want != got
 
+- name: Ensure that kube-controller-manager certificate is correct and has the CA in its chain
+  shell: >-
+    openssl verify -CAfile /secrets/ca.pem /secrets/kube-controller-manager.pem
+  register: result
+
+- set_fact:
+    want: "/secrets/kube-controller-manager.pem: OK"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want: {{ want }}, got: {{ got }}"
+  when: want != got
+
+- name: Ensure that kube-scheduler certificate is correct and has the CA in its chain
+  shell: >-
+    openssl verify -CAfile /secrets/ca.pem /secrets/kube-scheduler.pem
+  register: result
+
+- set_fact:
+    want: "/secrets/kube-scheduler.pem: OK"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want: {{ want }}, got: {{ got }}"
+  when: want != got
+
