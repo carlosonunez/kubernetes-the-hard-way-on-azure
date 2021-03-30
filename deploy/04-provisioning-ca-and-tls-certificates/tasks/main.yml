@@ -9,10 +9,13 @@
 
 - shell: cfssl gencert -initca /secrets/ca-csr.json | cfssljson -bare /secrets/ca
 
-- name: Create admin certificates
+- name: Create admin, kube-proxy certificates
   copy:
-    dest: "/secrets/admin.json"
-    content: "{{ lookup('template', 'admin-csr.yaml.j2') | from_yaml | to_json }}"
+    dest: "/secrets/{{ item }}-csr.json"
+    content: "{{ lookup('template', '{{ item }}-csr.yaml.j2') | from_yaml | to_json }}"
+  with_items:
+    - admin
+    - kube-proxy
 
 - shell: >-
     cfssl gencert \
@@ -20,7 +23,10 @@
       -ca-key=/secrets/ca-key.pem  \
       -config=/secrets/ca-config.json \
       -profile=kubernetes \
-      "/secrets/admin-csr.json" | cfssljson -bare "/secrets/admin"
+      "/secrets/{{ item }}-csr.json" | cfssljson -bare "/secrets/{{ item }}"
+  with_items:
+    - admin
+    - kube-proxy
 
 - name: Create worker certificates
   copy:

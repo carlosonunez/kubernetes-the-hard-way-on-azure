@@ -48,3 +48,17 @@
 - fail:
     msg: "want: {{ want }}, got: {{ got }}, diff: {{ diff }}"
   when: diff | length > 0
+
+- name: Ensure that kube-proxy certificate is correct and has the CA in its chain
+  shell: >-
+    openssl verify -CAfile /secrets/ca.pem /secrets/kube-proxy.pem
+  register: result
+
+- set_fact:
+    want: "/secrets/kube-proxy.pem: OK"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want: {{ want }}, got: {{ got }}"
+  when: want != got
+
