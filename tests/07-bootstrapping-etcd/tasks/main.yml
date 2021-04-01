@@ -1,0 +1,17 @@
+---
+- name: Ensure etcd and etcdctl is present in /usr/local/bin on all controllers
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" find /usr/local/bin/etcd*;
+    done
+  register: result
+
+- set_fact:
+    want: "6"
+    got: "{{ result.stdout_lines | length }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got

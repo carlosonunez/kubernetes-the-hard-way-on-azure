@@ -10,4 +10,5 @@
 #    - 03-provision-compute-resources
 #    - 04-provisioning-ca-and-tls-certificates
 #    - 05-kubernetes-configuration-files
-     - 06-data-encryption-keys
+#    - 06-data-encryption-keys
+     - 07-bootstrapping-etcd
