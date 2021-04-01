@@ -137,3 +137,11 @@
     - kthw-worker-1VMNic
     - kthw-worker-2VMNic
     - kthw-worker-3VMNic
+
+- name: Create a public IP for our API server
+  shell:
+    cache_key="/cache/pip-api-server"; \
+    test -f "$cache_key" && exit 0; \
+    az network public-ip create -g '{{ azure_resource_group }}' \
+      --name "kubernetes-the-hard-way" \
+      --allocation-method Static && touch "$cache_key"
