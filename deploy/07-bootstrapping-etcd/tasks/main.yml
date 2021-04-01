@@ -44,3 +44,14 @@
       "ubuntu@$ip_address" -- \
       'sudo mkdir -p /etc/etcd /var/lib/etcd && sudo chmod 700 /var/lib/etcd';
     done && touch "$cache_key"
+
+- name: Add certificates into /etc/etcd
+  shell:
+    cache_key="/cache/etcd_certs"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      'sudo cp ca.pem kubernetes-key.pem kubernetes.pem /etc/etcd/';
+    done && touch "$cache_key"
