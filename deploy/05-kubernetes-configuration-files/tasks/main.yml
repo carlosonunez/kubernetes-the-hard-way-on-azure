@@ -43,20 +43,24 @@
 
 - name: Create controller kubeconfigs
   shell: >-
+    config="{{ item.split(';')[0] }}";
+    user="{{ item.split(';')[1] }}"
     kubectl config set-cluster kubernetes-the-hard-way \
       --certificate-authority=/secrets/ca.pem \
       --embed-certs=true \
       --server=https://127.0.0.1:6443 \
-      --kubeconfig="/kubeconfigs/{{ item }}.kubeconfig";
-    kubectl config set-credentials "system:{{ item }}" \
+      --kubeconfig="/kubeconfigs/${config}.kubeconfig";
+    kubectl config set-credentials "$user" \
       --client-certificate="/secrets/{{ item }}.pem" \
       --client-key="/secrets/{{ item }}-key}.pem" \
       --embed-certs=true \
-      --kubeconfig="/kubeconfigs/{{ item }}.kubeconfig";
+      --kubeconfig="/kubeconfigs/${config}.kubeconfig";
     kubectl config set-context default \
       --cluster=kubernetes-the-hard-way \
-      --user="system:{{ item }}" \
-      --kubeconfig="/kubeconfigs/{{ item }}.kubeconfig";
-    kubectl config use-context default --kubeconfig="/kubeconfigs/{{ item }}.kubeconfig"
+      --user="$user" \
+      --kubeconfig="/kubeconfigs/${config}.kubeconfig";
+    kubectl config use-context default --kubeconfig="/kubeconfigs/${config}.kubeconfig"
   with_items:
-    - kube-controller-manager
+    - kube-controller-manager;system:kube-controller-manager
+    - kube-scheduler;system:kube-scheduler
+    - admin;admin

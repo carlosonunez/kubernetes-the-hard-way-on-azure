@@ -88,3 +88,43 @@
 - fail:
     msg: "want '{{ want }}', got '{{ got }}'"
   when: want != got
+
+- name: Ensure kube-scheduler certificate is present
+  stat:
+    path: /kubeconfigs/kube-scheduler.kubeconfig
+  register: result
+
+- set_fact:
+    want: true
+    got: "{{ result.stat.exists }}"
+
+- fail:
+    msg: "want {{ want }}; got {{ got }}"
+  when: want != got
+
+- name: Ensure kube-scheduler cert uses localhost
+  shell: >-
+    kubectl config view -o json --kubeconfig="/kubeconfigs/kube-scheduler.kubeconfig" | \
+      jq -r '.clusters[] | select(.name == "kubernetes-the-hard-way") | .cluster.server'
+  register: result
+
+- set_fact:
+    want: "https://127.0.0.1:6443"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want '{{ want }}', got '{{ got }}'"
+  when: want != got
+
+- name: Ensure admin certificate is present
+  stat:
+    path: /kubeconfigs/admin.kubeconfig
+  register: result
+
+- set_fact:
+    want: true
+    got: "{{ result.stat.exists }}"
+
+- fail:
+    msg: "want {{ want }}; got {{ got }}"
+  when: want != got
