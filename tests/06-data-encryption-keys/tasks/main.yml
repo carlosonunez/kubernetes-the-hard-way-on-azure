@@ -1,0 +1,43 @@
+---
+- name: Ensure encryption config is present
+  stat:
+    path: /manifests/encryption-config.yaml
+  register: result
+
+- set_fact:
+    want: true
+    got: "{{ result.stat.exists }}"
+
+- name: Ensure encryption config has an encryption key
+  shell: >-
+    yq -r '.resources[0].providers[] | to_entries[] | select(.key == "aescbc") | .value.keys[] | select(.name == "key1") | .secret' \
+      /manifests/encryption-config.yaml
+  register: result
+
+- set_fact:
+    want_re: "[0-9A-Za-z=]{45}"
+
+- fail:
+    msg: "enc key does not match pattern {{ want_re }}"
+  when: result.stdout | regex_findall(want_re) | length == 0
+
+- name: Ensure controllers have the encryption config
+  shell: >-
+    for ip in $(az network public-ip list | \
+      jq -r '.[] | select(.name | contains("control-plane")) | .ipAddress' \
+      | grep -v "null"); \
+    do \
+      ssh -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          "ubuntu@$ip" "stat /home/ubuntu/encryption-config.yaml"; \
+    done;
+  register: result
+  ignore_errors: true
+ 
+- set_fact:
+    want: 0
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want rc {{ want }}; got {{ got }}"
+  when: want != got

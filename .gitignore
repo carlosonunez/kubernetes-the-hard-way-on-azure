@@ -7,3 +7,4 @@ id_rsa*
 cache/
 secrets/
 kubeconfigs/
+manifests/

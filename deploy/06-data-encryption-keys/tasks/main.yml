@@ -1,0 +1,12 @@
+---
+- name: Create encryption key
+  shell: "head -c 32 /dev/urandom | base64"
+  register: result
+
+- set_fact:
+    encryption_key: "{{ result.stdout_lines[0] }}"
+
+- name: Create encryption manifest
+  copy:
+    dest: /manifests/encryption-config.yaml
+    content: "{{ lookup('template', 'encryption-config.yaml.j2') }}"
