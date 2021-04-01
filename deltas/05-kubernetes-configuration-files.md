@@ -7,3 +7,44 @@ Run this to get the public IP address of the Kubernetes API server:
 ```sh
 KUBERNETES_PUBLIC_ADDRESS=$(az network public-ip show -g 'kthw' -n "kubernetes-the-hard-way" | jq -r .ipAddress);
 ```
+
+## Distribute the Kubernetes Configuration Files
+
+Use these commands for the worker:
+
+```sh
+for idx in $(seq 1 3);
+do
+  for ip in $(az network public-ip list | \
+    jq -r '.[] | select(.name | contains("kthw-worker-$idx")) | .ipAddress' \
+    | grep -v "null");
+  do
+    for file in "kube-proxy.kubeconfig" "kthw-worker-$idx.kubeconfig";
+    do
+      scp -i kthw_ssh_key -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          "$file" "ubuntu@$ip:/home/ubuntu/"
+    done;
+  done;
+done
+```
+
+and use these commands for the controller:
+
+```sh
+for idx in $(seq 1 3);
+do
+  for ip in $(az network public-ip list | \
+    jq -r '.[] | select(.name | contains("kthw-control-plane-$idx")) | .ipAddress' \
+    | grep -v "null");
+  do
+    for file in admin.kubeconfig kube-controller-manager.kubeconfig kube-scheduler.kubeconfig; \
+    do
+      scp -i kthw_ssh_key -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          "$file" "ubuntu@$ip:/home/ubuntu/"
+    done;
+  done;
+done
+```
+
