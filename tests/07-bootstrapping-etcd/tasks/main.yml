@@ -15,3 +15,28 @@
 - fail:
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
   when: want != got
+
+- name: Ensure etcd folders present and permissioned correctly
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+    "ubuntu@$ip_address" -- "ls -ld {{ item }} | grep -v total | awk '{print \$1\" \"\$NF}'";
+    done
+  register: result
+  with_items:
+    - /var/lib/etcd
+    - /etc/etcd
+
+- set_fact:
+    want:
+      - "drwx------ /var/lib/etcd"
+      - "drwxr-xr-x /etc/etcd"
+    got: "{{ result.results | map(attribute='stdout_lines') | flatten | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
