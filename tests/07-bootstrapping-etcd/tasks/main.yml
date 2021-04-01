@@ -1,0 +1,135 @@
+---
+- name: Ensure etcd and etcdctl is present in /usr/local/bin on all controllers
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" find /usr/local/bin/etcd*;
+    done
+  register: result
+
+- set_fact:
+    want: "6"
+    got: "{{ result.stdout_lines | length }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
+
+- name: Ensure etcd folders present and permissioned correctly
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+    "ubuntu@$ip_address" -- "ls -ld {{ item }} | grep -v total | awk '{print \$1\" \"\$NF}'";
+    done
+  register: result
+  with_items:
+    - /var/lib/etcd
+    - /etc/etcd
+
+- set_fact:
+    want:
+      - "drwx------ /var/lib/etcd"
+      - "drwxr-xr-x /etc/etcd"
+    got: "{{ result.results | map(attribute='stdout_lines') | flatten | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
+
+- name: Ensure certificates are in /etc/etcd on all controllers
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" find /etc/etcd/*.pem;
+    done
+  register: result
+
+- set_fact:
+    want:
+      - /etc/etcd/ca.pem
+      - /etc/etcd/kubernetes-key.pem
+      - /etc/etcd/kubernetes.pem
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
+
+- name: Ensure etcd service is present
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" 'find /etc/systemd/system/etcd.service';
+    done
+  register: result
+
+- set_fact:
+    want: "3"
+    got: "{{ result.stdout_lines | length }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
+
+- name: Ensure etcd service has started
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" 'systemctl is-active --quiet etcd';
+    done
+  register: result
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
+
+- name: Ensure all members of the etcd cluster are present
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      'sudo ETCDCTL_API=3 etcdctl member list \
+        --endpoints=https://127.0.0.1:2379 \
+        --cacert=/etc/etcd/ca.pem \
+        --cert=/etc/etcd/kubernetes.pem \
+        --key=/etc/etcd/kubernetes-key.pem | awk -F "," "{print \$2' '\$3}" | sed "s/^ //"';
+    done
+  register: result
+
+- set_fact:
+    want:
+      - "started kthw-control-plane-1"
+      - "started kthw-control-plane-2"
+      - "started kthw-control-plane-3"
+    got: "{{ result.stdout_lines | sort | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
+
+- set_fact:
+    want_count: "9"
+    got_count: "{{ result.stdout_lines | length }}"
+
+- fail:
+    msg: "want {{ want_count }}, got {{ got_count }}"
+  when: want_count != got_count
