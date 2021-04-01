@@ -1,0 +1,108 @@
+---
+- name: Create worker kubeconfigs
+  shell: >-
+    instance_name="kthw-worker-{{ item }}";
+    public_ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n "kubernetes-the-hard-way" | jq -r .ipAddress);
+    kubectl config set-cluster kubernetes-the-hard-way \
+      --certificate-authority=/secrets/ca.pem \
+      --embed-certs=true \
+      --server=https://$public_ip_address:6443 \
+      --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
+    kubectl config set-credentials "system:node:$instance_name" \
+      --client-certificate="/secrets/${instance_name}.pem" \
+      --client-key="/secrets/${instance_key}.pem" \
+      --embed-certs=true \
+      --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
+    kubectl config set-context default \
+      --cluster=kubernetes-the-hard-way \
+      --user="system:node:$instance_name" \
+      --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
+    kubectl config use-context default --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig"
+  with_sequence: start=1 count=2
+
+- name: Create kube-proxy kubeconfig
+  shell: >-
+    public_ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n "kubernetes-the-hard-way" | jq -r .ipAddress);
+    kubectl config set-cluster kubernetes-the-hard-way \
+      --certificate-authority=/secrets/ca.pem \
+      --embed-certs=true \
+      --server=https://$public_ip_address:6443 \
+      --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig";
+    kubectl config set-credentials "system:kube-proxy" \
+      --client-certificate="/secrets/kube-proxy.pem" \
+      --client-key="/secrets/kube-proxy-key}.pem" \
+      --embed-certs=true \
+      --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig";
+    kubectl config set-context default \
+      --cluster=kubernetes-the-hard-way \
+      --user="system:kube-proxy" \
+      --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig";
+    kubectl config use-context default --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig"
+
+- name: Create controller kubeconfigs
+  shell: >-
+    config="{{ item.split(';')[0] }}";
+    user="{{ item.split(';')[1] }}"
+    kubectl config set-cluster kubernetes-the-hard-way \
+      --certificate-authority=/secrets/ca.pem \
+      --embed-certs=true \
+      --server=https://127.0.0.1:6443 \
+      --kubeconfig="/kubeconfigs/${config}.kubeconfig";
+    kubectl config set-credentials "$user" \
+      --client-certificate="/secrets/{{ item }}.pem" \
+      --client-key="/secrets/{{ item }}-key}.pem" \
+      --embed-certs=true \
+      --kubeconfig="/kubeconfigs/${config}.kubeconfig";
+    kubectl config set-context default \
+      --cluster=kubernetes-the-hard-way \
+      --user="$user" \ --kubeconfig="/kubeconfigs/${config}.kubeconfig";
+    kubectl config use-context default --kubeconfig="/kubeconfigs/${config}.kubeconfig"
+  with_items:
+    - kube-controller-manager;system:kube-controller-manager
+    - kube-scheduler;system:kube-scheduler
+    - admin;admin
+
+- name: Copy kubeconfigs to controllers
+  shell: 
+    cache_key="/cache/scp-controller-kubeconfig-{{ item }}"; \
+    if test -f "$cache_key";
+    then return 0;
+    fi;
+    for ip in $(az network public-ip list | \
+      jq -r '.[] | select(.name | contains("kthw-control-plane-{{ item }}")) | .ipAddress' \
+      | grep -v "null"); \
+    do \
+      for file in "admin.kubeconfig" \
+        "kube-controller-manager.kubeconfig" \
+        "kube-scheduler.kubeconfig";
+      do \
+        scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "/kubeconfigs/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
+      done; \
+    done;
+  with_sequence: start=1 count=3
+  register: result
+
+- name: Copy kubeconfigs to workers
+  shell: 
+    cache_key="/cache/scp-worker-kubeconfig-{{ item }}"; \
+    if test -f "$cache_key";
+    then return 0;
+    fi;
+    for ip in $(az network public-ip list | \
+      jq -r '.[] | select(.name | contains("kthw-worker-{{ item }}")) | .ipAddress' \
+      | grep -v "null"); \
+    do \
+      for file in "kthw-worker-{{ item }}.kubeconfig" \
+        "kube-proxy.kubeconfig";
+      do \
+        scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "/kubeconfigs/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
+      done; \
+    done;
+  with_sequence: start=1 count=3
+  register: result

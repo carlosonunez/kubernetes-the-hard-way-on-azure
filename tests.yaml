@@ -10,4 +10,5 @@
 #    - 01-prerequisites
 #    - 02-client-tools
 #    - 03-provision-compute-resources
-    - 04-provisioning-ca-and-tls-certificates
+#    - 04-provisioning-ca-and-tls-certificates
+     - 05-kubernetes-configuration-files
