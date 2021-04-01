@@ -1,0 +1,35 @@
+---
+- name: Create encryption key
+  shell: >-
+    cache_key="/cache/enc_key";
+    if test -f "$cache_key";
+    then cat "$cache_key";
+    else
+      head -c 32 /dev/urandom | base64 | tee "$cache_key";
+    fi
+  register: result
+
+- set_fact:
+    encryption_key: "{{ result.stdout_lines[0] }}"
+
+- name: Create encryption manifest
+  copy:
+    dest: /manifests/encryption-config.yaml
+    content: "{{ lookup('template', 'encryption-config.yaml.j2') }}"
+
+- name: Copy encryption manifest to controllers
+  shell: 
+    cache_key="/cache/scp-encryption-key-kubeconfig-{{ item }}"; \
+    if test -f "$cache_key";
+    then return 0;
+    fi;
+    for ip in $(az network public-ip list | \
+      jq -r '.[] | select(.name | contains("kthw-control-plane-{{ item }}")) | .ipAddress' \
+      | grep -v "null"); \
+    do \
+      scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          "/manifests/encryption-config.yaml" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
+    done;
+  with_sequence: start=1 count=3
+  register: result

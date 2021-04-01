@@ -14,6 +14,7 @@ services:
       - $PWD/secrets:/secrets
       - $PWD/cache:/cache # Azure is slow as hell; we need to cache some operations
       - $PWD/kubeconfigs:/kubeconfigs
+      - $PWD/manifests:/manifests
     ports:
       - "2222:22"
     networks:

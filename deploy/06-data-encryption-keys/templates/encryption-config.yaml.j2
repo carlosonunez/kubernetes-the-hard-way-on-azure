@@ -1,0 +1,13 @@
+---
+# vi: set ft=yaml:
+kind: EncryptionConfig
+apiVersion: v1
+resources:
+  - resources:
+      - secrets
+    providers:
+      - aescbc:
+          keys:
+            - name: key1
+              secret: {{ encryption_key }}
+      - identity: {% raw %}{}{% endraw %}
