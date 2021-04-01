@@ -57,10 +57,52 @@
       --kubeconfig="/kubeconfigs/${config}.kubeconfig";
     kubectl config set-context default \
       --cluster=kubernetes-the-hard-way \
-      --user="$user" \
-      --kubeconfig="/kubeconfigs/${config}.kubeconfig";
+      --user="$user" \ --kubeconfig="/kubeconfigs/${config}.kubeconfig";
     kubectl config use-context default --kubeconfig="/kubeconfigs/${config}.kubeconfig"
   with_items:
     - kube-controller-manager;system:kube-controller-manager
     - kube-scheduler;system:kube-scheduler
     - admin;admin
+
+- name: Copy kubeconfigs to controllers
+  shell: 
+    cache_key="/cache/scp-controller-kubeconfig-{{ item }}"; \
+    if test -f "$cache_key";
+    then return 0;
+    fi;
+    for ip in $(az network public-ip list | \
+      jq -r '.[] | select(.name | contains("kthw-control-plane-{{ item }}")) | .ipAddress' \
+      | grep -v "null"); \
+    do \
+      for file in "admin.kubeconfig" \
+        "kube-controller-manager.kubeconfig" \
+        "kube-scheduler.kubeconfig";
+      do \
+        scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "/kubeconfigs/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
+      done; \
+    done;
+  with_sequence: start=1 count=3
+  register: result
+
+- name: Copy kubeconfigs to workers
+  shell: 
+    cache_key="/cache/scp-worker-kubeconfig-{{ item }}"; \
+    if test -f "$cache_key";
+    then return 0;
+    fi;
+    for ip in $(az network public-ip list | \
+      jq -r '.[] | select(.name | contains("kthw-worker-{{ item }}")) | .ipAddress' \
+      | grep -v "null"); \
+    do \
+      for file in "kthw-worker-{{ item }}.kubeconfig" \
+        "kube-proxy.kubeconfig";
+      do \
+        scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "/kubeconfigs/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
+      done; \
+    done;
+  with_sequence: start=1 count=3
+  register: result
