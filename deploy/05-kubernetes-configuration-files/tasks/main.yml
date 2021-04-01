@@ -20,3 +20,43 @@
       --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
     kubectl config use-context default --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig"
   with_sequence: start=1 count=2
+
+- name: Create kube-proxy kubeconfig
+  shell: >-
+    public_ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n "kubernetes-the-hard-way" | jq -r .ipAddress);
+    kubectl config set-cluster kubernetes-the-hard-way \
+      --certificate-authority=/secrets/ca.pem \
+      --embed-certs=true \
+      --server=https://$public_ip_address:6443 \
+      --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig";
+    kubectl config set-credentials "system:kube-proxy" \
+      --client-certificate="/secrets/kube-proxy.pem" \
+      --client-key="/secrets/kube-proxy-key}.pem" \
+      --embed-certs=true \
+      --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig";
+    kubectl config set-context default \
+      --cluster=kubernetes-the-hard-way \
+      --user="system:kube-proxy" \
+      --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig";
+    kubectl config use-context default --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig"
+
+- name: Create controller kubeconfigs
+  shell: >-
+    kubectl config set-cluster kubernetes-the-hard-way \
+      --certificate-authority=/secrets/ca.pem \
+      --embed-certs=true \
+      --server=https://127.0.0.1:6443 \
+      --kubeconfig="/kubeconfigs/{{ item }}.kubeconfig";
+    kubectl config set-credentials "system:{{ item }}" \
+      --client-certificate="/secrets/{{ item }}.pem" \
+      --client-key="/secrets/{{ item }}-key}.pem" \
+      --embed-certs=true \
+      --kubeconfig="/kubeconfigs/{{ item }}.kubeconfig";
+    kubectl config set-context default \
+      --cluster=kubernetes-the-hard-way \
+      --user="system:{{ item }}" \
+      --kubeconfig="/kubeconfigs/{{ item }}.kubeconfig";
+    kubectl config use-context default --kubeconfig="/kubeconfigs/{{ item }}.kubeconfig"
+  with_items:
+    - kube-controller-manager

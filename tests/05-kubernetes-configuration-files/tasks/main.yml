@@ -34,3 +34,57 @@
 - fail:
     msg: "want '{{ want }}', got '{{ got }}'"
   when: want != got
+    
+- name: Ensure kube-proxy certificate is present
+  stat:
+    path: /kubeconfigs/kube-proxy.kubeconfig
+  register: result
+
+- set_fact:
+    want: true
+    got: "{{ result.stat.exists }}"
+
+- fail:
+    msg: "want {{ want }}; got {{ got }}"
+  when: want != got
+
+- name: Ensure kube-proxy cert uses the public API server
+  shell: >-
+    kubectl config view -o json --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig" | \
+      jq -r '.clusters[] | select(.name == "kubernetes-the-hard-way") | .cluster.server'
+  register: result
+
+- set_fact:
+    want: "https://{{ kube_api_server_ip }}:6443"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want '{{ want }}', got '{{ got }}'"
+  when: want != got
+
+- name: Ensure kube-controller-manager certificate is present
+  stat:
+    path: /kubeconfigs/kube-controller-manager.kubeconfig
+  register: result
+
+- set_fact:
+    want: true
+    got: "{{ result.stat.exists }}"
+
+- fail:
+    msg: "want {{ want }}; got {{ got }}"
+  when: want != got
+
+- name: Ensure kube-controller-manager cert uses localhost
+  shell: >-
+    kubectl config view -o json --kubeconfig="/kubeconfigs/kube-controller-manager.kubeconfig" | \
+      jq -r '.clusters[] | select(.name == "kubernetes-the-hard-way") | .cluster.server'
+  register: result
+
+- set_fact:
+    want: "https://127.0.0.1:6443"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want '{{ want }}', got '{{ got }}'"
+  when: want != got
