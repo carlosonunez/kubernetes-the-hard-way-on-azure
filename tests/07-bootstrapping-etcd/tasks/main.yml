@@ -81,3 +81,55 @@
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
   when: want != got
 
+- name: Ensure etcd service has started
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" 'systemctl is-active --quiet etcd';
+    done
+  register: result
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
+
+- name: Ensure all members of the etcd cluster are present
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      'sudo ETCDCTL_API=3 etcdctl member list \
+        --endpoints=https://127.0.0.1:2379 \
+        --cacert=/etc/etcd/ca.pem \
+        --cert=/etc/etcd/kubernetes.pem \
+        --key=/etc/etcd/kubernetes-key.pem | awk -F "," "{print \$2' '\$3}" | sed "s/^ //"';
+    done
+  register: result
+
+- set_fact:
+    want:
+      - "started kthw-control-plane-1"
+      - "started kthw-control-plane-2"
+      - "started kthw-control-plane-3"
+    got: "{{ result.stdout_lines | sort | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
+
+- set_fact:
+    want_count: "9"
+    got_count: "{{ result.stdout_lines | length }}"
+
+- fail:
+    msg: "want {{ want_count }}, got {{ got_count }}"
+  when: want_count != got_count

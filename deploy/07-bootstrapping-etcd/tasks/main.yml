@@ -127,3 +127,13 @@
   register: result
   with_sequence: start=1 count=3
 
+- name: Start etcd
+  shell:
+    cache_key="/cache/systemd_start-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        --name kthw-control-plane-{{ item }}PublicIP | jq -r .ipAddress); \
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" 'sudo systemctl daemon-reload && sudo systemctl enable etcd && sudo systemctl start etcd'
+  register: result
+  with_sequence: start=1 count=3
