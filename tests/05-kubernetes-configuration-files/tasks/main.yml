@@ -1,0 +1,36 @@
+---
+- name: Ensure worker kubeconfigs are present
+  shell: "find /kubeconfigs | grep kthw-worker"
+  register: result
+
+- set_fact:
+    want: "2"
+    got: "{{ result.stdout_lines | length }}"
+
+- fail:
+    msg: "want {{ want }} kubeconfigs; got {{ got }}"
+  when: want != got
+
+- name: Get the Kubernetes API server public IP
+  shell: >-
+    az network public-ip show -g '{{ azure_resource_group }}' \
+      -n "kubernetes-the-hard-way" | jq -r .ipAddress
+  register: result
+
+- set_fact:
+    kube_api_server_ip: "{{ result.stdout }}"
+
+- name: Ensure the kthw cluster is set to the correct API server
+  shell: >-
+    kubectl config view -o json --kubeconfig="/kubeconfigs/kthw-worker-{{ item }}.kubeconfig" | \
+      jq -r '.clusters[] | select(.name == "kubernetes-the-hard-way") | .cluster.server'
+  register: result
+  with_sequence: start=1 count=2
+
+- set_fact:
+    want: "https://{{ kube_api_server_ip }}:6443"
+    got: "{{ result.results | map(attribute='stdout') | flatten | unique | join(',') }}"
+
+- fail:
+    msg: "want '{{ want }}', got '{{ got }}'"
+  when: want != got

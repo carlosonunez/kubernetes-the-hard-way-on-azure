@@ -6,3 +6,4 @@ id_rsa*
 .azure/
 cache/
 secrets/
+kubeconfigs/

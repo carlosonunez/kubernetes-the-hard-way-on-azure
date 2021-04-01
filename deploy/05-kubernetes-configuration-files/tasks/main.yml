@@ -1,0 +1,22 @@
+---
+- name: Create worker kubeconfigs
+  shell: >-
+    instance_name="kthw-worker-{{ item }}";
+    public_ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n "kubernetes-the-hard-way" | jq -r .ipAddress);
+    kubectl config set-cluster kubernetes-the-hard-way \
+      --certificate-authority=/secrets/ca.pem \
+      --embed-certs=true \
+      --server=https://$public_ip_address:6443 \
+      --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
+    kubectl config set-credentials "system:node:$instance_name" \
+      --client-certificate="/secrets/${instance_name}.pem" \
+      --client-key="/secrets/${instance_key}.pem" \
+      --embed-certs=true \
+      --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
+    kubectl config set-context default \
+      --cluster=kubernetes-the-hard-way \
+      --user="system:node:$instance_name" \
+      --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
+    kubectl config use-context default --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig"
+  with_sequence: start=1 count=2
