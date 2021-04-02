@@ -16,3 +16,39 @@
 - fail:
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
   when: want != got
+
+- name: Ensure Kubernetes binaries are present and are the correct version
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+          'printf "$(hostname -s): kubectl version " && kubectl version --client=true -o json | jq -r .clientVersion.gitVersion; \
+          printf "$(hostname -s): kube-apiserver version " && kube-apiserver --version | sed "s/Kubernetes //"; \
+          printf "$(hostname -s): kube-controller-manager version " && kube-controller-manager --version | sed "s/Kubernetes //"; \
+          printf "$(hostname -s): kube-scheduler version " && kube-scheduler --version | sed "s/Kubernetes //";';
+    done
+  register: result
+
+- set_fact:
+    data:
+      - "kthw-control-plane-1: {{ item }} version v{{ kubernetes_version }}"
+      - "kthw-control-plane-2: {{ item }} version v{{ kubernetes_version }}"
+      - "kthw-control-plane-3: {{ item }} version v{{ kubernetes_version }}"
+  register: versions
+  with_items:
+    - kubectl
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+
+- set_fact:
+    want: "{{ versions.results | map(attribute='ansible_facts.data') | flatten }}"
+    got: "{{ result.stdout_lines }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0

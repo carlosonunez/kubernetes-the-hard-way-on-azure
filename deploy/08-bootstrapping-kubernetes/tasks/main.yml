@@ -1,7 +1,7 @@
 ---
 - name: Set the base url for k8s components
   set_fact:
-    kubernetes_base_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/"
+    kubernetes_base_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64"
 
 - name: Create config directory
   shell:
@@ -14,3 +14,38 @@
       sudo mkdir -p /etc/kubernetes/config;
     done && touch "$cache_key"
   register: result
+
+
+- name: Download Kubernetes components
+  shell:
+    cache_key="/cache/download_k8s_components-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "wget --timestamping --show-progress --https-only '{{ kubernetes_base_url }}/{{ item }}'";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubectl
+
+- name: Move components into /usr/local/bin
+  shell:
+    cache_key="/cache/install_k8s_components-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "chmod +x {{ item }} && sudo mv {{ item }} /usr/local/bin";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubectl
