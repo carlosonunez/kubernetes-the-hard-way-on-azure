@@ -11,7 +11,7 @@
       jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
-      sudo mkdir -p /etc/kubernetes/config;
+      sudo mkdir -p /etc/kubernetes/config && sudo mkdir -p /var/lib/kubernetes;
     done && touch "$cache_key"
   register: result
 
@@ -49,3 +49,23 @@
     - kube-controller-manager
     - kube-scheduler
     - kubectl
+
+- name: Move key files into /var/lib/kubernetes
+  shell:
+    cache_key="/cache/install_k8s_keyfiles-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "sudo mv {{ item }} /var/lib/kubernetes/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - ca.pem
+    - ca-key.pem
+    - kubernetes.pem
+    - kubernetes-key.pem
+    - service-account.pem
+    - service-account-key.pem
+    - encryption-config.yaml
