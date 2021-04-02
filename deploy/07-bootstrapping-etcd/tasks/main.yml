@@ -1,7 +1,7 @@
 ---
 - name: Set the etcd installer url
   set_fact:
-    etcd_url: https://github.com/etcd-io/etcd/releases/download/v3.4.10/etcd-v3.4.10-linux-amd64.tar.gz
+    etcd_url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
 
 - name: Install wget
   shell:

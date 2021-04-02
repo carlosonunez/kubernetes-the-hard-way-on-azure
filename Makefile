@@ -2,6 +2,10 @@ MAKEFLAGS += --silent
 SHELL := /usr/bin/env bash
 ENV_FILE := $(PWD)/.env
 DOCKER_COMPOSE := docker-compose
+KUBERNETES_VERSION ?= 1.18.6
+ETCD_VERSION ?= 3.4.10
+AZURE_RESOURCE_GROUP ?= kthw
+
 ifneq (,$(wildcard $(ENV_FILE)))
 	include $(PWD)/.env
 	export
@@ -46,7 +50,9 @@ tests:
 		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
 		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
 		--extra-vars "azure_region=$$AZURE_REGION" \
-		--extra-vars "azure_resource_group=kthw" \
+		--extra-vars "azure_resource_group=$(AZURE_RESOURCE_GROUP)" \
+    --extra-vars "etcd_version=$(ETCD_VERSION)" \
+    --extra-vars "kubernetes_version=$(KUBERNETES_VERSION)" \
 		tests.yaml; \
 	result=$$?; \
 	if test "$(TEARDOWN)" == "true"; \
@@ -78,7 +84,9 @@ deploy:
 		--extra-vars "azure_client_id=$$AZURE_CLIENT_ID" \
 		--extra-vars "azure_client_secret=$$AZURE_CLIENT_SECRET" \
 		--extra-vars "azure_region=$$AZURE_REGION" \
-		--extra-vars "azure_resource_group=kthw" \
+		--extra-vars "azure_resource_group=$(AZURE_RESOURCE_GROUP)" \
+    --extra-vars "etcd_version=$(ETCD_VERSION)" \
+    --extra-vars "kubernetes_version=$(KUBERNETES_VERSION)" \
 		deploy.yaml; \
 	result=$$?; \
 	if test "$(TEARDOWN)" == "true"; \
