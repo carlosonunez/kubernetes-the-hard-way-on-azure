@@ -5,7 +5,7 @@
       jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
-      find /etc/kubernetes/config;
+      find /etc/kubernetes/config -type d;
     done
   register: result
 
@@ -59,7 +59,7 @@
       jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
-      'find /var/lib/kubernetes -name "*.pem" -o -name "*.yaml"'
+      'find /var/lib/kubernetes -name "*.pem" -o -name "*.yaml" | grep -v kube-scheduler'
     done
   register: result
 
@@ -71,3 +71,23 @@
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
   when: want != got
 
+- name: Kubernetes control plane services started
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'for svc in kube-apiserver kube-controller-manager kube-scheduler; \
+        do systemctl is-active --quiet $svc || { echo "Not active: $svc"; exit 1; }; \
+       done';
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got

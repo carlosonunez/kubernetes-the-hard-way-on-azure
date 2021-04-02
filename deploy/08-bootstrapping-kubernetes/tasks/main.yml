@@ -1,4 +1,15 @@
 ---
+- name: Get the Kubernetes API server public IP address
+  shell: >-
+    cache_key="/cache/kubernetes_public_ip_address"; \
+    test -f "$cache_key" && { cat "$cache_key" && exit 0; }; \
+    az network public-ip show -g '{{ azure_resource_group }}' \
+      --name kubernetes-the-hard-way | jq -r .ipAddress | tee "$cache_key"
+  register: result
+
+- set_fact:
+    kubernetes_public_ip: "{{ result.stdout }}"
+
 - name: Set the base url for k8s components
   set_fact:
     kubernetes_base_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64"
@@ -69,3 +80,116 @@
     - service-account.pem
     - service-account-key.pem
     - encryption-config.yaml
+
+- name: Change the owner of the /var/lib/kubernetes folder so we can scp stuff into it
+  shell:
+    cache_key="/cache/perm-var-lib-k8s"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "sudo chown -R ubuntu:ubuntu /var/lib/kubernetes";
+    done && touch "$cache_key"
+
+- name: Create Kubernetes control plane files
+  copy:
+    dest: "/secrets/{{ item }}"
+    content: "{{ lookup('template', '{{ item }}') }}"
+  with_items:
+    - kube-apiserver.service
+    - kube-controller-manager.service
+    - kube-scheduler.service
+    - kube-scheduler.yaml
+
+- name: Distribute systemd units
+  shell:
+    cache_key="/cache/systemd_controller-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/{{ item }} \
+      "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver.service
+    - kube-controller-manager.service
+    - kube-scheduler.service
+
+- name: Move units into the right place
+  shell:
+    cache_key="/cache/systemd_controller-mv-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo mv /tmp/{{ item }} /etc/systemd/system/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver.service
+    - kube-controller-manager.service
+    - kube-scheduler.service
+
+- name: Distribute kube-scheduler.yaml
+  shell:
+    cache_key="/cache/scheduler-yaml-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/{{ item }} \
+      "ubuntu@$ip_address:/tmp/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-scheduler.yaml
+
+- name: Move kube-scheduler.yaml into the right place
+  shell:
+    cache_key="/cache/systemd_controller-mv-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo mv /tmp/{{ item }} /etc/kubernetes/config/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-scheduler.yaml
+
+- name: Move kubeconfigs into the right place
+  shell:
+    cache_key="/cache/kubeconfig-mv-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo mv {{ item }} /var/lib/kubernetes/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-controller-manager.kubeconfig
+    - kube-scheduler.kubeconfig
+
+- name: Start Kubernetes control plane
+  shell:
+    cache_key="/cache/systemd_start-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo systemctl daemon-reload && sudo systemctl enable {{ item }} && sudo systemctl start {{ item }}";
+    done
+  register: result
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+
