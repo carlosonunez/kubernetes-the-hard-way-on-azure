@@ -1,0 +1,16 @@
+---
+- name: Set the base url for k8s components
+  set_fact:
+    kubernetes_base_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/"
+
+- name: Create config directory
+  shell:
+    cache_key="/cache/create_config_directory"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      sudo mkdir -p /etc/kubernetes/config;
+    done && touch "$cache_key"
+  register: result
