@@ -110,3 +110,32 @@
 - fail:
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
   when: want != got
+
+- name: Confirm that cluster is okay
+  shell:
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'kubectl get componentstatuses --kubeconfig admin.kubeconfig';
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - 'NAME                 STATUS    MESSAGE             ERROR'
+      - 'scheduler            Healthy   ok'
+      - 'controller-manager   Healthy   ok'
+      - 'etcd-0               Healthy   {"health":"true"}'
+      - 'etcd-1               Healthy   {"health":"true"}'
+      - 'etcd-2               Healthy   {"health":"true"}'
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
+

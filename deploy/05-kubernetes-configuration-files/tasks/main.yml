@@ -44,15 +44,15 @@
 - name: Create controller kubeconfigs
   shell: >-
     config="{{ item.split(';')[0] }}";
-    user="{{ item.split(';')[1] }}"
+    user="{{ item.split(';')[1] }}";
     kubectl config set-cluster kubernetes-the-hard-way \
       --certificate-authority=/secrets/ca.pem \
       --embed-certs=true \
       --server=https://127.0.0.1:6443 \
       --kubeconfig="/kubeconfigs/${config}.kubeconfig";
     kubectl config set-credentials "$user" \
-      --client-certificate="/secrets/{{ item }}.pem" \
-      --client-key="/secrets/{{ item }}-key}.pem" \
+      --client-certificate="/secrets/${config}.pem" \
+      --client-key="/secrets/${config}-key.pem" \
       --embed-certs=true \
       --kubeconfig="/kubeconfigs/${config}.kubeconfig";
     kubectl config set-context default \
