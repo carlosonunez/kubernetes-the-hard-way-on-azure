@@ -1,4 +1,15 @@
 ---
+- name: Install nginx
+  shell:
+    cache_key="/cache/install-nginx-controllers"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      sudo apt -y install nginx;
+    done && touch "$cache_key"
+
 - name: Get the Kubernetes API server public IP address
   shell: >-
     cache_key="/cache/kubernetes_public_ip_address"; \
@@ -186,10 +197,49 @@
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" -- \
       "sudo systemctl daemon-reload && sudo systemctl enable {{ item }} && sudo systemctl start {{ item }}";
-    done
+    done && touch "$cache_key"
   register: result
   with_items:
     - kube-apiserver
     - kube-controller-manager
     - kube-scheduler
 
+- name: Create /healthz heathiness check
+  copy:
+    dest: /secrets/healthz
+    content: "{{ lookup('file', 'healthz') }}"
+
+- name: Copy /healthz into all controllers
+  shell:
+    cache_key="/cache/copy-healthz"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/healthz \
+      "ubuntu@$ip_address:/tmp/";
+    done && touch "$cache_key"
+
+- name: Move /healthz into the right place
+  shell:
+    cache_key="/cache/healthz-mv"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo mv /tmp/healthz /etc/nginx/sites-available/kubernetes.default.svc.cluster.local";
+    done && touch "$cache_key"
+
+- name: Enable the site and reload nginx
+  shell:
+    cache_key="/cache/reload-nginx"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      'sudo ln -fs /etc/nginx/sites-available/kubernetes.default.svc.cluster.local /etc/nginx/sites-enabled/ &&
+       sudo systemctl restart nginx &&
+       sudo systemctl enable nginx';
+    done && touch "$cache_key"

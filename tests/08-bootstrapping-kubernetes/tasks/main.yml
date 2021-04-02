@@ -91,3 +91,22 @@
 - fail:
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
   when: want != got
+
+- name: Verify /healthz exists
+  shell:
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'test -h /etc/nginx/sites-enabled/kubernetes.default.svc.cluster.local || exit 1';
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
