@@ -4,7 +4,7 @@ ENV_FILE := $(PWD)/.env
 DOCKER_COMPOSE := docker-compose
 KUBERNETES_VERSION ?= 1.18.6
 ETCD_VERSION ?= 3.4.10
-AZURE_RESOURCE_GROUP ?= kthw
+AZURE_RESOURCE_GROUP ?= kubernetes
 
 ifneq (,$(wildcard $(ENV_FILE)))
 	include $(PWD)/.env

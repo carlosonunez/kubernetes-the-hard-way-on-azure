@@ -8,7 +8,7 @@ their public IP from the Azure Public IP that was automatically created for them
 Use this command instead to do this.
 
 ```sh
-for instance in kthw-worker-1 kthw-worker-2 kthw-worker-3
+for instance in worker-1 worker-2 worker-3
 do
   internal_ip=$(\
     az network nic show -n "${instance}VMNic" -g '{{ azure_resource_group }}' | \
@@ -53,10 +53,10 @@ Use these commands for the worker:
 for idx in $(seq 1 3);
 do
   for ip in $(az network public-ip list | \
-    jq -r '.[] | select(.name | contains("kthw-worker-$idx")) | .ipAddress' \
+    jq -r '.[] | select(.name | contains("worker-$idx")) | .ipAddress' \
     | grep -v "null");
   do
-    for file in "ca.pem" "kthw-worker-$idx.pem" "kthw-worker-$idx-key.pem";
+    for file in "ca.pem" "worker-$idx.pem" "worker-$idx-key.pem";
     do
       scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
           -o UserKnownHostsFile=/dev/null \
@@ -72,7 +72,7 @@ and use these commands for the controller:
 for idx in $(seq 1 3);
 do
   for ip in $(az network public-ip list | \
-    jq -r '.[] | select(.name | contains("kthw-control-plane-$idx")) | .ipAddress' \
+    jq -r '.[] | select(.name | contains("controller-$idx")) | .ipAddress' \
     | grep -v "null");
   do
     for file in "ca.pem" "ca-key.pem" "kubernetes.pem" "kubernetes-key.pem" \

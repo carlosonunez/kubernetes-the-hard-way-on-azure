@@ -74,7 +74,7 @@
 
 - name: Create the control plane
   shell: >-
-    vm_name="kthw-control-plane-{{ item }}"; \
+    vm_name="controller-{{ item }}"; \
     cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     if test -f "$cache_key"; \
     then \
@@ -97,11 +97,11 @@
       --os-disk-size-gb "200" \
       --admin-username "ubuntu" \
       --ssh-key-values /secrets/kthw_ssh_key.pub && touch "$cache_key"
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
 
 - name: Create the workers
   shell: >-
-    vm_name="kthw-worker-{{ item }}"; \
+    vm_name="worker-{{ item }}"; \
     cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     if test -f "$cache_key"; \
     then \
@@ -118,27 +118,33 @@
       --private-ip-address "10.240.0.2{{ item }}" \
       --subnet kthw-subnet \
       --vnet-name kthw \
-      --os-disk-name "kthw-worker-disk-{{ item }}" \
+      --os-disk-name "worker-disk-{{ item }}" \
       --os-disk-size-gb "200" \
       --admin-username "ubuntu" \
+      --public-ip-address-allocation static \
+      --public-ip-sku Standard \
       --ssh-key-values /secrets/kthw_ssh_key.pub && touch "$cache_key"
-  with_sequence: start=1 count=2
+  with_sequence: start=0 count=2
 
-- name: Configure IP forwarding on all NICs in the cluster
+- name: Configure IP forwarding for the controllers
   shell:
-    vm_name="kthw-nic-{{ item }}"; \
+    vm_name="kthw-nic-controller{{ item }}"; \
     cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     test -f "$cache_key" && exit 0; \
     az network nic update -g '{{ azure_resource_group }}' \
-      --name "{{ item }}" \
+      --name "controller-{{ item }}VMNic" \
       --ip-forwarding true && touch "$cache_key"
-  with_items:
-    - kthw-control-plane-1VMNic
-    - kthw-control-plane-2VMNic
-    - kthw-control-plane-3VMNic
-    - kthw-worker-1VMNic
-    - kthw-worker-2VMNic
-    - kthw-worker-3VMNic
+  with_sequence: start=0 count=3
+
+- name: Configure IP forwarding for the workers
+  shell:
+    vm_name="kthw-nic-worker{{ item }}"; \
+    cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
+    test -f "$cache_key" && exit 0; \
+    az network nic update -g '{{ azure_resource_group }}' \
+      --name "worker-{{ item }}VMNic" \
+      --ip-forwarding true && touch "$cache_key"
+  with_sequence: start=0 count=2
 
 # LOL.
 # Be me.

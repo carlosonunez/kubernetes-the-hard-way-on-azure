@@ -8,7 +8,7 @@
     cache_key="/cache/install_wget_controller"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" "sudo apt -y install wget";
     done && touch "$cache_key"
@@ -19,7 +19,7 @@
     cache_key="/cache/install_jq_controller"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" "sudo apt -y install jq";
     done && touch "$cache_key"
@@ -30,7 +30,7 @@
     cache_key="/cache/download_etcd_controller"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" -- wget -q --show-progress --https-only --timestamping "{{ etcd_url }}";
     done && touch "$cache_key"
@@ -40,7 +40,7 @@
     cache_key="/cache/install_etcd_controller"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" -- 'tar -xvf {{ etcd_url.split("/") | last }} && sudo mv etcd*/{etcd,etcdctl} /usr/local/bin/';
     done && touch "$cache_key"
@@ -50,7 +50,7 @@
     cache_key="/cache/create_etcd_folders"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" -- \
       'sudo mkdir -p /etc/etcd /var/lib/etcd && sudo chmod 700 /var/lib/etcd';
@@ -61,7 +61,7 @@
     cache_key="/cache/etcd_certs"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" -- \
       'sudo cp ca.pem kubernetes-key.pem kubernetes.pem /etc/etcd/';
@@ -73,8 +73,8 @@
     test -f "$cache_key" && { cat "$cache_key"; exit 0; }; \
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$(az network public-ip show -g '{{ azure_resource_group }}' \
-        --name kthw-control-plane-{{ item }}PublicIP | jq -r .ipAddress)" 'hostname -s' | tee "$cache_key"
-  with_sequence: start=1 count=3
+        --name controller-{{ item }}PublicIP | jq -r .ipAddress)" 'hostname -s' | tee "$cache_key"
+  with_sequence: start=0 count=3
   register: result
 
 - set_fact:
@@ -86,10 +86,10 @@
     test -f "$cache_key" && { cat "$cache_key"; exit 0; }; \
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$(az network public-ip show -g '{{ azure_resource_group }}' \
-        --name kthw-control-plane-{{ item }}PublicIP | jq -r .ipAddress)" \
+        --name controller-{{ item }}PublicIP | jq -r .ipAddress)" \
         -- 'curl -H "Metadata: true" http://169.254.169.254/metadata/instance?api-version=2021-01-01 | \
             jq -r .network.interface[0].ipv4.ipAddress[0].privateIpAddress' | tee "$cache_key"
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
   register: result
 
 - set_fact:
@@ -102,38 +102,38 @@
   copy:
     dest: "/secrets/etcd.service.{{ item }}"
     content: "{{ lookup('template', 'etcd.service') }}"
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
 
 - name: Distribute systemd units
   shell:
     cache_key="/cache/systemd_controller-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
-        --name kthw-control-plane-{{ item }}PublicIP | jq -r .ipAddress); \
+        --name controller-{{ item }}PublicIP | jq -r .ipAddress); \
     scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       /secrets/etcd.service.{{ item }} \
       "ubuntu@$ip_address:/tmp" && touch "$cache_key"
   register: result
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
 
 - name: Move units into the right place
   shell:
     cache_key="/cache/systemd_controller-mv-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
-        --name kthw-control-plane-{{ item }}PublicIP | jq -r .ipAddress); \
+        --name controller-{{ item }}PublicIP | jq -r .ipAddress); \
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" "sudo mv /tmp/etcd.service.{{ item }} /etc/systemd/system/etcd.service" && touch "$cache_key"
   register: result
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
 
 - name: Start etcd
   shell:
     cache_key="/cache/systemd_start-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
-        --name kthw-control-plane-{{ item }}PublicIP | jq -r .ipAddress); \
+        --name controller-{{ item }}PublicIP | jq -r .ipAddress); \
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" 'sudo systemctl daemon-reload && sudo systemctl enable etcd && sudo systemctl start etcd'
   register: result
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3

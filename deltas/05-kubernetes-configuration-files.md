@@ -16,10 +16,10 @@ Use these commands for the worker:
 for idx in $(seq 1 3);
 do
   for ip in $(az network public-ip list | \
-    jq -r '.[] | select(.name | contains("kthw-worker-$idx")) | .ipAddress' \
+    jq -r '.[] | select(.name | contains("worker-$idx")) | .ipAddress' \
     | grep -v "null");
   do
-    for file in "kube-proxy.kubeconfig" "kthw-worker-$idx.kubeconfig";
+    for file in "kube-proxy.kubeconfig" "worker-$idx.kubeconfig";
     do
       scp -i kthw_ssh_key -o StrictHostKeyChecking=no \
           -o UserKnownHostsFile=/dev/null \
@@ -35,7 +35,7 @@ and use these commands for the controller:
 for idx in $(seq 1 3);
 do
   for ip in $(az network public-ip list | \
-    jq -r '.[] | select(.name | contains("kthw-control-plane-$idx")) | .ipAddress' \
+    jq -r '.[] | select(.name | contains("controller-$idx")) | .ipAddress' \
     | grep -v "null");
   do
     for file in admin.kubeconfig kube-controller-manager.kubeconfig kube-scheduler.kubeconfig; \

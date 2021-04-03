@@ -7,7 +7,7 @@ need to install it first by SSHing into each controller and using `apt`:
 
 ```sh
 $: for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-     jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress'); \
+     jq -r '.[] | select(.name |contains("controller")) | .ipAddress'); \
    do sudo apt -y install wget; \
    done
 ```
@@ -34,5 +34,5 @@ INTERNAL_IP=$(curl -H "Metadata: true" http://169.254.169.254/metadata/instance?
 ```
 
 While creating the `etcd` systemd unit, change all references for `controller-`
-in `etcd.service` to `kthw-control-plane-` and increment the numbers by one. For instance,
-`controller-0` will become `kthw-control-plane-1`.
+in `etcd.service` to `controller-` and increment the numbers by one. For instance,
+`controller-1` will become `controller-0`.

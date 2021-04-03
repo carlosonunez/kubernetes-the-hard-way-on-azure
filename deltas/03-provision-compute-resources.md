@@ -134,8 +134,8 @@ Next, let's run `az vm create` to provision our control plane instances:
 for i in $(seq 1 3)
 do
   az vm create -g kthw \
-    --name "kthw-control-plane-$i" \
-    --computer-name "kthw-control-plane-$i" \
+    --name "controller-$i" \
+    --computer-name "controller-$i" \
     --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
     --priority "Spot" \
     --max-price "0.04" \
@@ -157,8 +157,8 @@ Then we'll do the same for our worker nodes:
 for i in $(seq 1 3)
 do
   az vm create -g kthw \
-    --name "kthw-worker-$i" \
-    --computer-name "kthw-control-plane-$i" \
+    --name "worker-$i" \
+    --computer-name "controller-$i" \
     --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
     --priority "Spot" \
     --max-price "0.04" \
@@ -198,10 +198,10 @@ $ for ip in $(az network public-ip list -g kthw | jq -r .[].ipAddress | grep -v 
         "ubuntu@$ip" \
         echo '$(hostname): $(whoami)' 2>/dev/null; \
   done | grep "ubuntu"
-kthw-control-plane-1: ubuntu
-kthw-control-plane-2: ubuntu
-kthw-control-plane-3: ubuntu
-kthw-worker-1: ubuntu
-kthw-worker-2: ubuntu
-kthw-worker-3: ubuntu
+controller-0: ubuntu
+controller-1: ubuntu
+controller-2: ubuntu
+worker-1: ubuntu
+worker-2: ubuntu
+worker-3: ubuntu
 ```

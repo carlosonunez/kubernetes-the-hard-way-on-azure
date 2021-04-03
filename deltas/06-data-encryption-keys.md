@@ -8,7 +8,7 @@ Use this command to send `encryption-config.yaml` to your controllers:
 for idx in $(seq 1 3);
 do
   for ip in $(az network public-ip list | \
-    jq -r '.[] | select(.name | contains("kthw-control-plane-$idx")) | .ipAddress' \
+    jq -r '.[] | select(.name | contains("controller-$idx")) | .ipAddress' \
     | grep -v "null");
   do
     scp -i kthw_ssh_key -o StrictHostKeyChecking=no \
