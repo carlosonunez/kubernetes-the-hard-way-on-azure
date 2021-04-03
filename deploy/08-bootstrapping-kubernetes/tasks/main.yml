@@ -243,3 +243,28 @@
        sudo systemctl restart nginx &&
        sudo systemctl enable nginx';
     done && touch "$cache_key"
+
+- name: Create apiserver to kubelet clusterrole yaml
+  copy:
+    dest: /secrets/cr.yaml
+    content: "{{ lookup('file', 'kube-apiserver-to-kubelet-cr.yaml') }}"
+
+- name: Copy yaml to first controller
+  shell:
+    cache_key="/cache/copy-yaml"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n kthw-control-plane-1PublicIP -o json | jq -r .ipAddress);
+    scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/cr.yaml \
+      "ubuntu@$ip_address:/home/ubuntu/" && touch "$cache_key"
+
+- name: Apply yaml
+  shell:
+    cache_key="/cache/apply-cr-yaml"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n kthw-control-plane-1PublicIP -o json | jq -r .ipAddress);
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'kubectl apply -f cr.yaml' && touch "$cache_key"
