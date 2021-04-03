@@ -1,4 +1,15 @@
 ---
+- name: Get the Kubernetes API server public IP address
+  shell: >-
+    cache_key="/cache/kubernetes_public_ip_address"; \
+    test -f "$cache_key" && { cat "$cache_key" && exit 0; }; \
+    az network public-ip show -g '{{ azure_resource_group }}' \
+      --name kubernetes-the-hard-way | jq -r .ipAddress | tee "$cache_key"
+  register: result
+
+- set_fact:
+    kubernetes_public_ip: "{{ result.stdout }}"
+
 - name: /etc/kubernetes/config exists
   shell: >-
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
@@ -188,4 +199,18 @@
 
 - fail:
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}, errors: {{ result.stderr_lines }}"
+  when: want != got
+
+- name: Verify health check is being served up from public IP address
+  shell:
+    curl --cacert /secrets/ca.pem -so /dev/null http://{{ kubernetes_public_ip }}/version | jq -r .gitVersion;
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "{{ kubernetes_version }}"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}"
   when: want != got

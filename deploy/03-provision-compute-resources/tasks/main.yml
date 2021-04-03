@@ -89,6 +89,8 @@
       --max-price "0.04" \
       --size "Standard_D2s_v4" \
       --private-ip-address "10.240.0.1{{ item }}" \
+      --public-ip-address-allocation static \
+      --public-ip-sku Standard \
       --subnet kthw-subnet \
       --vnet-name kthw \
       --os-disk-name "kthw-cp-disk-{{ item }}" \
@@ -138,10 +140,24 @@
     - kthw-worker-2VMNic
     - kthw-worker-3VMNic
 
+# LOL.
+# Be me.
+# Go through labs.
+# Try to create a lb.
+# Learn that you can't.
+# Why?
+# You can't map a public IP with a Basic SKU to a load balancer with a non-Basic SKU.
+# You can't create a network probe against a Basic SKU load balancer.
+# You can't 'upgrade' a public IP to a Standard SKU.
+# Only solution?
+# DELETE EVERYTHING AND START THE FUCK OVER.
+# Azure is death by ten thousand cuts.
+# Yes, I'm leaving this comment in the production release of this guide.
 - name: Create a public IP for our API server
   shell:
     cache_key="/cache/pip-api-server"; \
     test -f "$cache_key" && exit 0; \
     az network public-ip create -g '{{ azure_resource_group }}' \
       --name "kubernetes-the-hard-way" \
+      --sku Standard \
       --allocation-method Static && touch "$cache_key"

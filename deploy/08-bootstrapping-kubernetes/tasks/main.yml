@@ -293,3 +293,88 @@
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
       'kubectl apply -f crb.yaml' && touch "$cache_key"
+
+- name: Create the load balancer for our Kubernetes API servers
+  shell:
+    cache_key="/cache/create-lb.yaml";
+    test -f "$cache_key" && exit 0;
+    az network lb create -g '{{ azure_resource_group }}' \
+      -n kubernetes \
+      --sku Standard && touch "$cache_key"
+
+- name: Create the frontend IP for the lb
+  shell:
+    cache_key="/cache/create-lb-frontend-ip";
+    test -f "$cache_key" && exit 0;
+    az network lb frontend-ip create -g '{{ azure_resource_group }}' \
+      --lb-name kubernetes \
+      -n kubernetes-frontend-ip \
+      --public-ip-address kubernetes-the-hard-way && touch "$cache_key"
+    
+# Unlike GCP, Azure does not support adding custom host headers to their
+# LB health checking probes. This means that we have to check that the
+# default nginx website is being served (i.e. that nginx is running).
+# This isn't as comprehensive as checking /healthz specifically, but
+# given its purpose for this guide, this should be enough.
+- name: Add the health check probe
+  shell:
+    cache_key="/cache/create-lb-probe.yaml";
+    test -f "$cache_key" && exit 0;
+    az network lb probe create -g '{{ azure_resource_group }}' \
+      --lb-name kubernetes \
+      -n kubernetes \
+      --protocol http \
+      --port 80 \
+      --path /
+
+- name: Add NSG to allow Azure probing service to hit controllers in backend pool
+  shell:
+    cache_key="/cache/create-lb-probe-nsg.yaml";
+    test -f "$cache_key" && exit 0;
+    az network nsg create -g '{{ azure_resource_group }}' -n kthw-lb-prober-nsg && touch "$cache_key"
+
+# Unlike GCP, this range is NOT documented in official documentation. I just
+# happened to remmeber this being a problem at a previous client.
+- shell:
+    cache_key="/cache/create-lb-probe-nsg-rule.yaml";
+    test -f "$cache_key" && exit 0;
+    az network nsg rule create -g '{{ azure_resource_group }}' \
+      --nsg-name kthw-lb-prober-nsg \
+      -n allow-msft-prober-into-controllers \
+      --access allow \
+      --source-address-prefixes "168.63.129.16/32" \
+      --source-port-ranges "*" \
+      --protocol tcp \
+      --destination-address-prefixes "*" \
+      --destination-port-ranges "80" && touch "$cache_key"
+
+- name: Create backend pool for load balancer and add the controllers onto it
+  shell:
+    cache_key="/cache/lb-create-backend-pool"; \
+    test -f "$cache_key" && exit 0; \
+    backend_commands=""; \
+    idx=0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress');
+    do \
+      backend_commands="${backend_commands}--backend-address name=kthw-control-plane-$idx ip-address=$ip_address ";
+      idx=$((idx+1));
+    done
+    az network lb address-pool create  -g '{{ azure_resource_group }}' \
+      -n kubernetes-target-pool \
+      --lb-name kubernetes \
+      --vnet kthw-vnet \
+      ${backend_commands} && touch "$cache_key"
+
+- name: "Bind the public IP to the backend pool at port 6443"
+  shell:
+    cache_key="/cache/create-lb-rule.yaml";
+    test -f "$cache_key" && exit 0;
+    az network lb rule create -g '{{ azure_resource_group }}' \
+      --lb kubernetes \
+      -n kubernetes-forwarding-rule \
+      --protocol HTTP \
+      --frontend-ip kubernetes-frontend-ip \
+      --frontend-port "6443" \
+      --backend-pool-name kubernetes-target-pool \
+      --backend-port "6443" && touch "$cache_key"
