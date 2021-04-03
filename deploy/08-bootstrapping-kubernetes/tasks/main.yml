@@ -268,3 +268,28 @@
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
       'kubectl apply -f cr.yaml' && touch "$cache_key"
+
+- name: Create apiserver clusterrolebinding yaml
+  copy:
+    dest: /secrets/crb.yaml
+    content: "{{ lookup('file', 'kube-apiserver-crb.yaml') }}"
+
+- name: Copy crb yaml to first controller
+  shell:
+    cache_key="/cache/copy-crb-yaml"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n kthw-control-plane-1PublicIP -o json | jq -r .ipAddress);
+    scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/crb.yaml \
+      "ubuntu@$ip_address:/home/ubuntu/" && touch "$cache_key"
+
+- name: Apply yaml
+  shell:
+    cache_key="/cache/apply-crb-yaml"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n kthw-control-plane-1PublicIP -o json | jq -r .ipAddress);
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'kubectl apply -f crb.yaml' && touch "$cache_key"

@@ -173,3 +173,19 @@
 - fail:
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}, errors: {{ result.stderr_lines }}"
   when: want != got
+
+- name: Verify that system:kube-apiserver role binding exists
+  shell:
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$(az network public-ip show -g '{{ azure_resource_group }}' -n kthw-control-plane-2PublicIP | jq -r .ipAddress)" \
+      'kubectl --kubeconfig admin.kubeconfig get clusterrolebinding | grep -q system:kube-apiserver'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}, errors: {{ result.stderr_lines }}"
+  when: want != got
