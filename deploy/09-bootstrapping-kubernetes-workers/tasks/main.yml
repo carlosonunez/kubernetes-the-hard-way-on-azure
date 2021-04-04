@@ -1,0 +1,92 @@
+---
+- set_fact:
+    crictl_url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v{{ crictl_version }}/crictl-v{{ crictl_version }}-linux-amd64.tar.gz"
+    runc_url: "https://github.com/opencontainers/runc/releases/download/v{{ runc_version }}/runc.amd64"
+    cni_url: "https://github.com/containernetworking/plugins/releases/download/v{{ cni_version }}/cni-plugins-linux-amd64-v{{ cni_version }}.tgz"
+    containerd_url: "https://github.com/containerd/containerd/releases/download/v{{ containerd_version }}/containerd-{{ containerd_version }}-linux-amd64.tar.gz"
+    kubectl_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kubectl"
+    kube_proxy_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kube-proxy"
+    kubelet_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kubelet"
+
+- name: Install core networking binaries
+  shell:
+    cache_key="/cache/install-net-utilities"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      sudo apt -y install socat ipset conntrack;
+    done && touch "$cache_key"
+
+- name: Create installation directories
+  shell:
+    cache_key="/cache/create-install-dirs"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo mkdir -p /etc/cni/net.d
+        /opt/cni/bin
+        /var/lib/kubelet
+        /var/run/kube-proxy
+        /var/lib/kubernetes
+        /var/run/kubernetes';
+    done && touch "$cache_key"
+
+- name: Download worker binaries
+  shell:
+    cache_key="/cache/download-worker-binaries"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'wget --timestamping "{{ crictl_url }}" 
+         "{{ runc_url }}" 
+         "{{ cni_url }}" 
+         "{{ containerd_url }}" 
+         "{{ kubectl_url }}" 
+         "{{ kube_proxy_url }}" 
+         "{{ kubelet_url }}"';
+    done && touch "$cache_key"
+
+- name: Install containerd to /bin
+  shell:
+    cache_key="/cache/install_containerd"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'mkdir containerd &&
+        tar -xvf "{{ containerd_url.split("/")[-1] }}" -C containerd &&
+        sudo mv containerd/bin/* /bin/';
+    done && touch "$cache_key"
+
+- name: Install runc, crictl and kube components to /usr/local/bin
+  shell:
+    cache_key="/cache/install_kube_stuff"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'tar -xvf "{{ crictl_url.split("/")[-1] }}" &&
+       sudo mv runc.amd64 runc &&
+       chmod +x crictl kubectl kube-proxy kubelet runc &&
+       sudo mv crictl kubectl kube-proxy kubelet runc /usr/local/bin/';
+    done && touch "$cache_key"
+
+- name: Install the cni plugins into /opt/cni/bin
+  shell:
+    cache_key="/cache/install_cni_plugins"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo tar -xvf "{{ cni_url.split("/")[-1] }}" -C /opt/cni/bin';
+    done && touch "$cache_key"
+

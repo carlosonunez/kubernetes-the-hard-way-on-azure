@@ -1,0 +1,85 @@
+---
+- name: Ensure key network utilities are installed
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      which socat conntrack ipset;
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - /usr/bin/socat
+      - /usr/sbin/conntrack
+      - /usr/sbin/ipset
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0 
+
+- name: Ensure swap is disabled
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      sudo swapon --show;
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: []
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0 
+
+- name: Ensure CNI plugins, containerd, crictl, and kube binaries are present
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'for file in \
+          /usr/local/bin/crictl \
+          /usr/local/bin/kubectl \
+          /usr/local/bin/kube-proxy \
+          /usr/local/bin/kubelet \
+          /usr/local/bin/runc \
+          /bin/containerd \
+          /opt/cni/bin/cni;
+        do test -f "$file" && echo "$file"; \
+        done';
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - /usr/local/bin/crictl
+      - /usr/local/bin/kubectl
+      - /usr/local/bin/kube-proxy
+      - /usr/local/bin/kubelet
+      - /usr/local/bin/runc
+      - /bin/containerd
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0 
+
