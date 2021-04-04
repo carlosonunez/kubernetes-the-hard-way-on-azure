@@ -100,3 +100,14 @@ deploy_then_test: deploy tests
 
 debug:
 	$(DOCKER_COMPOSE) run --rm --entrypoint bash test-container;
+
+clean:
+	>&2 read -p "WARNING: You are going to delete *** YOUR ENTIRE *** Kubernetes lab cluster. Type \"yes\" to continue: " choice; \
+	choice_lower=$$(echo "$$choice" | tr '[:upper:]' '[:lower:]'); \
+	if test "$$choice_lower"  != "yes"; \
+	then \
+		>&2 echo "'make clean' stopped."; \
+		exit 0; \
+	fi; \
+	$(DOCKER_COMPOSE) run --rm kthw_az group delete -g "$(AZURE_RESOURCE_GROUP)" --yes && \
+		rm -r secrets/* cache/* manifests/*	
