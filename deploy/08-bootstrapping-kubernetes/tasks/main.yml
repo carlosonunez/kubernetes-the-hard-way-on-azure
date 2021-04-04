@@ -33,7 +33,7 @@
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
-      sudo mkdir -p /etc/kubernetes/config && sudo mkdir -p /var/lib/kubernetes;
+      'sudo mkdir -p /etc/kubernetes/config && sudo mkdir -p /var/lib/kubernetes';
     done && touch "$cache_key"
   register: result
 
@@ -267,7 +267,7 @@
       -n controller-0PublicIP -o json | jq -r .ipAddress);
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
-      'kubectl apply -f cr.yaml' && touch "$cache_key"
+      'kubectl apply -f cr.yaml --kubeconfig admin.kubeconfig' && touch "$cache_key"
 
 - name: Create apiserver clusterrolebinding yaml
   copy:
@@ -292,7 +292,7 @@
       -n controller-0PublicIP -o json | jq -r .ipAddress);
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
-      'kubectl apply -f crb.yaml' && touch "$cache_key"
+      'kubectl apply -f crb.yaml --kubeconfig admin.kubeconfig' && touch "$cache_key"
 
 - name: Create the load balancer for our Kubernetes API servers
   shell:
@@ -341,6 +341,7 @@
     az network nsg rule create -g '{{ azure_resource_group }}' \
       --nsg-name kthw-lb-prober-nsg \
       -n allow-msft-prober-into-controllers \
+      --priority "110" \
       --access allow \
       --source-address-prefixes "168.63.129.16/32" \
       --source-port-ranges "*" \
@@ -359,11 +360,11 @@
     do \
       backend_commands="${backend_commands}--backend-address name=controller-$idx ip-address=$ip_address ";
       idx=$((idx+1));
-    done
+    done;
     az network lb address-pool create  -g '{{ azure_resource_group }}' \
       -n kubernetes-target-pool \
       --lb-name kubernetes \
-      --vnet kthw-vnet \
+      --vnet kthw \
       ${backend_commands} && touch "$cache_key"
 
 - name: "Bind the public IP to the backend pool at port 6443"
@@ -373,7 +374,7 @@
     az network lb rule create -g '{{ azure_resource_group }}' \
       --lb kubernetes \
       -n kubernetes-forwarding-rule \
-      --protocol HTTP \
+      --protocol Tcp \
       --frontend-ip kubernetes-frontend-ip \
       --frontend-port "6443" \
       --backend-pool-name kubernetes-target-pool \

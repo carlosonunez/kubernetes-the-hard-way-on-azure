@@ -21,7 +21,7 @@
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
-      "ubuntu@$ip_address" "sudo apt -y install jq";
+      "ubuntu@$ip_address" "sudo apt -y update && sudo apt -y install jq";
     done && touch "$cache_key"
   register: result
 
@@ -134,6 +134,7 @@
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
         --name controller-{{ item }}PublicIP | jq -r .ipAddress); \
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
-      "ubuntu@$ip_address" 'sudo systemctl daemon-reload && sudo systemctl enable etcd && sudo systemctl start etcd'
+      "ubuntu@$ip_address" 'sudo systemctl daemon-reload && sudo systemctl enable etcd && sudo systemctl start etcd' &
   register: result
   with_sequence: start=0 count=3
+  ignore_errors: true
