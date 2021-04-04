@@ -174,33 +174,3 @@
     msg: "want: {{ want }}, got: {{ got }}, diff: {{ diff }}"
   when: diff | length > 0
 
-- name: Ensure controllers have the controller certs
-  shell: >-
-    for ip in $(az network public-ip list | \
-      jq -r '.[] | select(.name | contains("control-plane")) | .ipAddress' \
-      | grep -v "null"); \
-    do \
-      ssh -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
-          -o UserKnownHostsFile=/dev/null \
-          "ubuntu@$ip" "find /home/ubuntu -name '*.pem'"; \
-    done;
-  register: result
-  ignore_errors: true
-
-- set_fact:
-    want:
-      - /home/ubuntu/ca.pem
-      - /home/ubuntu/ca-key.pem
-      - /home/ubuntu/kubernetes.pem
-      - /home/ubuntu/kubernetes-key.pem
-      - /home/ubuntu/service-account.pem
-      - /home/ubuntu/service-account-key.pem
-    got: "{{ result.stdout.split('\n') | unique }}"
-
-- set_fact:
-    diff: "{{ want | difference(got) }}"
-
-- fail:
-    msg: "want: {{ want }}, got: {{ got }}, diff: {{ diff }}"
-  when: diff | length > 0
-
