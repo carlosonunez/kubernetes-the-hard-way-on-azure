@@ -5,15 +5,11 @@
 Use this command to send `encryption-config.yaml` to your controllers:
 
 ```sh
-for idx in $(seq 1 3);
+for idx in $(seq 0 2);
 do
-  for ip in $(az network public-ip list | \
-    jq -r '.[] | select(.name | contains("kthw-control-plane-$idx")) | .ipAddress' \
-    | grep -v "null");
-  do
-    scp -i kthw_ssh_key -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        "encryption-config.yaml" "ubuntu@$ip:/home/ubuntu/"
-  done;
+  ip=$(az network public-ip show -g kubernetes -n "controller-${idx}PublicIP" --query 'ipAddress' -o tsv)
+  scp -i kthw_ssh_key -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      "encryption-config.yaml" "ubuntu@$ip:/home/ubuntu/"
 done
 ```

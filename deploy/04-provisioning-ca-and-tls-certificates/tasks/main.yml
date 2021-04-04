@@ -36,9 +36,9 @@
 
 - name: Create worker certificates
   copy:
-    dest: "/secrets/kthw-worker-{{ item }}-csr.json"
+    dest: "/secrets/worker-{{ item }}-csr.json"
     content: "{{ lookup('template', 'kubelet-csr.yaml.j2') | from_yaml | to_json }}"
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
 
 - shell: >-
     if test -f "/cache/internal-ip-{{ item }}" && test -f "/cache/external-ip-{{ item }}"; \
@@ -47,10 +47,10 @@
       external_ip=$(cat "/cache/external-ip-{{ item }}"); \
     else \
       internal_ip=$(\
-        az network nic show -n "kthw-worker-{{ item }}VMNic" -g '{{ azure_resource_group }}' | \
+        az network nic show -n "worker-{{ item }}VMNic" -g '{{ azure_resource_group }}' | \
         jq -r .ipConfigurations.privateIpAddress); \
       external_ip=$(\
-        az network nic show -n "kthw-worker-{{ item }}PublicIP" -g '{{ azure_resource_group }}' | \
+        az network nic show -n "worker-{{ item }}PublicIP" -g '{{ azure_resource_group }}' | \
         jq -r .ipAddress); \
       printf "$internal_ip" > "/cache/internal-ip-{{ item }}"; \
       printf "$external_ip" > "/cache/external-ip-{{ item }}"; \
@@ -62,8 +62,8 @@
       -config=/secrets/ca-config.json \
       -hostname="$hostname,$external_ip,$internal_ip" \
       -profile=kubernetes \
-      "/secrets/kthw-worker-{{ item }}-csr.json" | cfssljson -bare "/secrets/kthw-worker-{{ item }}"
-  with_sequence: start=1 count=3
+      "/secrets/worker-{{ item }}-csr.json" | cfssljson -bare "/secrets/worker-{{ item }}"
+  with_sequence: start=0 count=3
 
 - name: Create api-server certificate
   copy:
@@ -78,8 +78,8 @@
     then \
       internal_ips=$(cat "$internal_cache_key"); \
     else \
-      internal_ips=$(az network nic list -g kthw | \
-        jq -r '[.[] | select(.name | contains("kthw-control-plane")) | .ipConfigurations[].privateIpAddress] | join(",")') && \
+      internal_ips=$(az network nic list -g {{ azure_resource_group }} | \
+        jq -r '[.[] | select(.name | contains("controller")) | .ipConfigurations[].privateIpAddress] | join(",")') && \
       echo "$internal_ips" > "$internal_cache_key"; \
     fi; \
     if test -f "$external_cache_key"; \
@@ -105,17 +105,17 @@
     then return 0;
     fi;
     for ip in $(az network public-ip list | \
-      jq -r '.[] | select(.name | contains("kthw-worker-{{ item }}")) | .ipAddress' \
+      jq -r '.[] | select(.name | contains("worker-{{ item }}")) | .ipAddress' \
       | grep -v "null");
     do
-      for file in "ca.pem" "kthw-worker-{{ item }}.pem" "kthw-worker-{{ item }}-key.pem";
+      for file in "ca.pem" "worker-{{ item }}.pem" "worker-{{ item }}-key.pem";
       do
         scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
             "/secrets/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key";
       done;
     done;
-  with_sequence: start=1 count=2
+  with_sequence: start=0 count=2
   register: result
 
 - name: Copy controller certs into controllers
@@ -125,7 +125,7 @@
     then return 0;
     fi;
     for ip in $(az network public-ip list | \
-      jq -r '.[] | select(.name | contains("kthw-control-plane-{{ item }}")) | .ipAddress' \
+      jq -r '.[] | select(.name | contains("controller-{{ item }}")) | .ipAddress' \
       | grep -v "null"); \
     do \
       for file in "ca.pem" \
@@ -140,5 +140,5 @@
             "/secrets/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
       done; \
     done;
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
   register: result

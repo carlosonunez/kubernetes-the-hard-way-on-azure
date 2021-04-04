@@ -1,6 +1,6 @@
 ---
 - name: Ensure worker kubeconfigs are present
-  shell: "find /kubeconfigs | grep kthw-worker"
+  shell: "find /kubeconfigs | grep worker"
   register: result
 
 - set_fact:
@@ -22,10 +22,10 @@
 
 - name: Ensure the kthw cluster is set to the correct API server
   shell: >-
-    kubectl config view -o json --kubeconfig="/kubeconfigs/kthw-worker-{{ item }}.kubeconfig" | \
+    kubectl config view -o json --kubeconfig="/kubeconfigs/worker-{{ item }}.kubeconfig" | \
       jq -r '.clusters[] | select(.name == "kubernetes-the-hard-way") | .cluster.server'
   register: result
-  with_sequence: start=1 count=2
+  with_sequence: start=0 count=2
 
 - set_fact:
     want: "https://{{ kube_api_server_ip }}:6443"
@@ -129,33 +129,6 @@
     msg: "want {{ want }}; got {{ got }}"
   when: want != got
 
-- name: Ensure controllers have the controller kubeconfigs
-  shell: >-
-    for ip in $(az network public-ip list | \
-      jq -r '.[] | select(.name | contains("control-plane")) | .ipAddress' \
-      | grep -v "null"); \
-    do \
-      ssh -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
-          -o UserKnownHostsFile=/dev/null \
-          "ubuntu@$ip" "find /home/ubuntu -name '*.kubeconfig'"; \
-    done;
-  register: result
-  ignore_errors: true
-
-- set_fact:
-    want:
-      - /home/ubuntu/admin.kubeconfig
-      - /home/ubuntu/kube-scheduler.kubeconfig
-      - /home/ubuntu/kube-controller-manager.kubeconfig
-    got: "{{ result.stdout.split('\n') | unique }}"
-
-- set_fact:
-    diff: "{{ want | difference(got) }}"
-
-- fail:
-    msg: "want: {{ want }}, got: {{ got }}, diff: {{ diff }}"
-  when: diff | length > 0
-
 - name: Ensure workers have the worker kubeconfigs
   shell: >-
     for ip in $(az network public-ip list | \
@@ -168,13 +141,13 @@
     done;
   register: result
   ignore_errors: true
-  with_sequence: start=1 count=2
+  with_sequence: start=0 count=2
 
 - set_fact:
     want:
       - /home/ubuntu/kube-proxy.kubeconfig
-      - /home/ubuntu/kthw-worker-1.kubeconfig
-      - /home/ubuntu/kthw-worker-2.kubeconfig
+      - /home/ubuntu/worker-0.kubeconfig
+      - /home/ubuntu/worker-1.kubeconfig
     got: "{{ result.results | map(attribute='stdout_lines') | flatten | unique }}"
 
 - set_fact:

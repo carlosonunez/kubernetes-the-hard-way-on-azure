@@ -30,16 +30,16 @@
 
 - name: Ensure that each worker's cert is present and validates
   shell: >-
-    for idx in $(seq 1 3); \
-    do openssl verify -CAfile /secrets/ca.pem "/secrets/kthw-worker-$idx.pem"; \
+    for idx in $(seq 0 2); \
+    do openssl verify -CAfile /secrets/ca.pem "/secrets/worker-$idx.pem"; \
     done;
   register: result
 
 - set_fact:
     want:
-      - "/secrets/kthw-worker-1.pem: OK"
-      - "/secrets/kthw-worker-2.pem: OK"
-      - "/secrets/kthw-worker-3.pem: OK"
+      - "/secrets/worker-0.pem: OK"
+      - "/secrets/worker-1.pem: OK"
+      - "/secrets/worker-2.pem: OK"
     got: "{{ result.stdout.split('\n') }}"
 
 - set_fact:
@@ -104,7 +104,7 @@
 - name: Ensure that the Kubernetes API server certificate has the correct SANs
   shell: >-
     control_plane_ips=$(az network nic list -g '{{ azure_resource_group }}' | \
-      jq -r '[.[] | select(.name | contains("kthw-control-plane")) | .ipConfigurations[] | .privateIpAddress] | join(",")'); \
+      jq -r '[.[] | select(.name | contains("controller")) | .ipConfigurations[] | .privateIpAddress] | join(",")'); \
     kube_public_ip=$(az network public-ip show -g '{{ azure_resource_group }}' -n "kubernetes-the-hard-way" | \
       jq -r '.ipAddress'); \
     echo "10.32.0.1,127.0.0.1,${control_plane_ips},${kube_public_ip},kubernetes.default.svc.cluster.local,kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster,kubernetes.default.svc.cluster.local,kubernetes.svc.cluster.local" | \
@@ -161,40 +161,10 @@
 - set_fact:
     want:
       - /home/ubuntu/ca.pem
-      - /home/ubuntu/kthw-worker-1.pem
-      - /home/ubuntu/kthw-worker-1-key.pem
-      - /home/ubuntu/kthw-worker-2.pem
-      - /home/ubuntu/kthw-worker-2-key.pem
-    got: "{{ result.stdout.split('\n') | unique }}"
-
-- set_fact:
-    diff: "{{ want | difference(got) }}"
-
-- fail:
-    msg: "want: {{ want }}, got: {{ got }}, diff: {{ diff }}"
-  when: diff | length > 0
-
-- name: Ensure controllers have the controller certs
-  shell: >-
-    for ip in $(az network public-ip list | \
-      jq -r '.[] | select(.name | contains("control-plane")) | .ipAddress' \
-      | grep -v "null"); \
-    do \
-      ssh -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
-          -o UserKnownHostsFile=/dev/null \
-          "ubuntu@$ip" "find /home/ubuntu -name '*.pem'"; \
-    done;
-  register: result
-  ignore_errors: true
-
-- set_fact:
-    want:
-      - /home/ubuntu/ca.pem
-      - /home/ubuntu/ca-key.pem
-      - /home/ubuntu/kubernetes.pem
-      - /home/ubuntu/kubernetes-key.pem
-      - /home/ubuntu/service-account.pem
-      - /home/ubuntu/service-account-key.pem
+      - /home/ubuntu/worker-0.pem
+      - /home/ubuntu/worker-0-key.pem
+      - /home/ubuntu/worker-1.pem
+      - /home/ubuntu/worker-1-key.pem
     got: "{{ result.stdout.split('\n') | unique }}"
 
 - set_fact:

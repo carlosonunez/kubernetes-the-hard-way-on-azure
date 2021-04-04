@@ -1,0 +1,384 @@
+---
+- name: Install nginx
+  shell:
+    cache_key="/cache/install-nginx-controllers"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      sudo apt -y install nginx;
+    done && touch "$cache_key"
+
+- name: Get the Kubernetes API server public IP address
+  shell: >-
+    cache_key="/cache/kubernetes_public_ip_address"; \
+    test -f "$cache_key" && { cat "$cache_key" && exit 0; }; \
+    az network public-ip show -g '{{ azure_resource_group }}' \
+      --name kubernetes-the-hard-way | jq -r .ipAddress | tee "$cache_key"
+  register: result
+
+- set_fact:
+    kubernetes_public_ip: "{{ result.stdout }}"
+
+- name: Set the base url for k8s components
+  set_fact:
+    kubernetes_base_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64"
+
+- name: Create config directory
+  shell:
+    cache_key="/cache/create_config_directory"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo mkdir -p /etc/kubernetes/config && sudo mkdir -p /var/lib/kubernetes';
+    done && touch "$cache_key"
+  register: result
+
+
+- name: Download Kubernetes components
+  shell:
+    cache_key="/cache/download_k8s_components-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "wget --timestamping --show-progress --https-only '{{ kubernetes_base_url }}/{{ item }}'";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubectl
+
+- name: Move components into /usr/local/bin
+  shell:
+    cache_key="/cache/install_k8s_components-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "chmod +x {{ item }} && sudo mv {{ item }} /usr/local/bin";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+    - kubectl
+
+- name: Move key files into /var/lib/kubernetes
+  shell:
+    cache_key="/cache/install_k8s_keyfiles-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "sudo mv {{ item }} /var/lib/kubernetes/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - ca.pem
+    - ca-key.pem
+    - kubernetes.pem
+    - kubernetes-key.pem
+    - service-account.pem
+    - service-account-key.pem
+    - encryption-config.yaml
+
+- name: Change the owner of the /var/lib/kubernetes folder so we can scp stuff into it
+  shell:
+    cache_key="/cache/perm-var-lib-k8s"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "sudo chown -R ubuntu:ubuntu /var/lib/kubernetes";
+    done && touch "$cache_key"
+
+- name: Create Kubernetes control plane files
+  copy:
+    dest: "/secrets/{{ item }}"
+    content: "{{ lookup('template', '{{ item }}') }}"
+  with_items:
+    - kube-apiserver.service
+    - kube-controller-manager.service
+    - kube-scheduler.service
+    - kube-scheduler.yaml
+
+- name: Distribute systemd units
+  shell:
+    cache_key="/cache/systemd_controller-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/{{ item }} \
+      "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver.service
+    - kube-controller-manager.service
+    - kube-scheduler.service
+
+- name: Move units into the right place
+  shell:
+    cache_key="/cache/systemd_controller-mv-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo mv /tmp/{{ item }} /etc/systemd/system/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver.service
+    - kube-controller-manager.service
+    - kube-scheduler.service
+
+- name: Distribute kube-scheduler.yaml
+  shell:
+    cache_key="/cache/scheduler-yaml-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/{{ item }} \
+      "ubuntu@$ip_address:/tmp/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-scheduler.yaml
+
+- name: Move kube-scheduler.yaml into the right place
+  shell:
+    cache_key="/cache/systemd_controller-mv-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo mv /tmp/{{ item }} /etc/kubernetes/config/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-scheduler.yaml
+
+- name: Move kubeconfigs into the right place
+  shell:
+    cache_key="/cache/kubeconfig-mv-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo mv {{ item }} /var/lib/kubernetes/";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-controller-manager.kubeconfig
+    - kube-scheduler.kubeconfig
+
+- name: Start Kubernetes control plane
+  shell:
+    cache_key="/cache/systemd_start-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo systemctl daemon-reload && sudo systemctl enable {{ item }} && sudo systemctl start {{ item }}";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+
+- name: Create /healthz heathiness check
+  copy:
+    dest: /secrets/healthz
+    content: "{{ lookup('file', 'healthz') }}"
+
+- name: Copy /healthz into all controllers
+  shell:
+    cache_key="/cache/copy-healthz"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/healthz \
+      "ubuntu@$ip_address:/tmp/";
+    done && touch "$cache_key"
+
+- name: Move /healthz into the right place
+  shell:
+    cache_key="/cache/healthz-mv"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      "sudo mv /tmp/healthz /etc/nginx/sites-available/kubernetes.default.svc.cluster.local";
+    done && touch "$cache_key"
+
+- name: Enable the site and reload nginx
+  shell:
+    cache_key="/cache/reload-nginx"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+      'sudo ln -fs /etc/nginx/sites-available/kubernetes.default.svc.cluster.local /etc/nginx/sites-enabled/ &&
+       sudo systemctl restart nginx &&
+       sudo systemctl enable nginx';
+    done && touch "$cache_key"
+
+- name: Create apiserver to kubelet clusterrole yaml
+  copy:
+    dest: /secrets/cr.yaml
+    content: "{{ lookup('file', 'kube-apiserver-to-kubelet-cr.yaml') }}"
+
+- name: Copy yaml to first controller
+  shell:
+    cache_key="/cache/copy-yaml"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n controller-0PublicIP -o json | jq -r .ipAddress);
+    scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/cr.yaml \
+      "ubuntu@$ip_address:/home/ubuntu/" && touch "$cache_key"
+
+- name: Apply yaml
+  shell:
+    cache_key="/cache/apply-cr-yaml"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n controller-0PublicIP -o json | jq -r .ipAddress);
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'kubectl apply -f cr.yaml --kubeconfig admin.kubeconfig' && touch "$cache_key"
+
+- name: Create apiserver clusterrolebinding yaml
+  copy:
+    dest: /secrets/crb.yaml
+    content: "{{ lookup('file', 'kube-apiserver-crb.yaml') }}"
+
+- name: Copy crb yaml to first controller
+  shell:
+    cache_key="/cache/copy-crb-yaml"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n controller-0PublicIP -o json | jq -r .ipAddress);
+    scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      /secrets/crb.yaml \
+      "ubuntu@$ip_address:/home/ubuntu/" && touch "$cache_key"
+
+- name: Apply yaml
+  shell:
+    cache_key="/cache/apply-crb-yaml"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n controller-0PublicIP -o json | jq -r .ipAddress);
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'kubectl apply -f crb.yaml --kubeconfig admin.kubeconfig' && touch "$cache_key"
+
+# TODO: doc
+- name: Create the load balancer for our Kubernetes API servers
+  shell:
+    cache_key="/cache/create-lb.yaml";
+    test -f "$cache_key" && exit 0;
+    az network lb create -g '{{ azure_resource_group }}' \
+      -n kubernetes \
+      --sku Standard && touch "$cache_key"
+
+# TODO: doc
+- name: Create the frontend IP for the lb
+  shell:
+    cache_key="/cache/create-lb-frontend-ip";
+    test -f "$cache_key" && exit 0;
+    az network lb frontend-ip create -g '{{ azure_resource_group }}' \
+      --lb-name kubernetes \
+      -n kubernetes-frontend-ip \
+      --public-ip-address kubernetes-the-hard-way && touch "$cache_key"
+    
+# Unlike GCP, Azure does not support adding custom host headers to their
+# LB health checking probes. This means that we have to check that the
+# default nginx website is being served (i.e. that nginx is running).
+# This isn't as comprehensive as checking /healthz specifically, but
+# given its purpose for this guide, this should be enough.
+# TODO: doc
+- name: Add the health check probe
+  shell:
+    cache_key="/cache/create-lb-probe.yaml";
+    test -f "$cache_key" && exit 0;
+    az network lb probe create -g '{{ azure_resource_group }}' \
+      --lb-name kubernetes \
+      -n kubernetes \
+      --protocol http \
+      --port 80 \
+      --path /
+
+# Unlike GCP, this range is NOT documented in official documentation. I just
+# happened to remmeber this being a problem at a previous client.
+# TODO: doc
+- name: Add NSG rule to allow Azure probing service to hit controllers in backend pool
+  shell:
+    cache_key="/cache/create-lb-probe-nsg-rule.yaml";
+    test -f "$cache_key" && exit 0;
+    az network nsg rule create -g '{{ azure_resource_group }}' \
+      --nsg-name kthw-nsg \
+      -n allow-msft-prober-into-controllers \
+      --priority "110" \
+      --access allow \
+      --source-address-prefixes "168.63.129.16/32" \
+      --source-port-ranges "*" \
+      --protocol tcp \
+      --destination-address-prefixes "*" \
+      --destination-port-ranges "80" && touch "$cache_key"
+
+# It appears that the nodes in the backend pool need to be added by their
+# internal IPs, not their external ones.
+# TODO: doc
+- name: Create backend pool for load balancer and add the controllers onto it
+  shell:
+    cache_key="/cache/lb-create-backend-pool"; \
+    test -f "$cache_key" && exit 0; \
+    backend_commands=""; \
+    idx=0; \
+    for ip_address in $(az network nic list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipConfigurations[0].privateIpAddress');
+    do \
+      backend_commands="${backend_commands}--backend-address name=controller-$idx ip-address=$ip_address ";
+      idx=$((idx+1));
+    done;
+    az network lb address-pool create  -g '{{ azure_resource_group }}' \
+      -n kubernetes-target-pool \
+      --lb-name kubernetes \
+      --vnet kthw \
+      ${backend_commands} && touch "$cache_key"
+
+# TODO: doc
+- name: "Bind the public IP to the backend pool at port 6443"
+  shell:
+    cache_key="/cache/create-lb-rule.yaml";
+    test -f "$cache_key" && exit 0;
+    az network lb rule create -g '{{ azure_resource_group }}' \
+      --lb kubernetes \
+      -n kubernetes-forwarding-rule \
+      --protocol Tcp \
+      --frontend-ip kubernetes-frontend-ip \
+      --frontend-port "6443" \
+      --backend-pool-name kubernetes-target-pool \
+      --backend-port "6443" && touch "$cache_key"

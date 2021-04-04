@@ -42,12 +42,12 @@
     fi; \
     from="$(echo "{{ item }}" | awk '{% raw %}{ print $6 }{% endraw %}')"; \
     to="$(echo "{{ item }}" | awk '{% raw %}{ print $8 }{% endraw %}')"; \
-    cmd="az network nsg rule create -g kthw --nsg-name kthw-nsg
+    cmd="az network nsg rule create -g {{ azure_resource_group }} --nsg-name kthw-nsg
       --name $name  
       --priority $priority
       --access $permission
       --source-address-prefixes $from
-      --source-port-ranges $port
+      --source-port-ranges "*"
       --protocol $protocol
       --destination-address-prefixes $to
       --destination-port-ranges $port"; \
@@ -74,7 +74,7 @@
 
 - name: Create the control plane
   shell: >-
-    vm_name="kthw-control-plane-{{ item }}"; \
+    vm_name="controller-{{ item }}"; \
     cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     if test -f "$cache_key"; \
     then \
@@ -82,24 +82,27 @@
       exit 0; \
     fi; \
     az vm create -g '{{ azure_resource_group }}' \
-      --name "$vm_name" \
+      --admin-username "ubuntu" \
       --computer-name "$vm_name" \
       --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
-      --priority "Spot" \
       --max-price "0.04" \
-      --size "Standard_D2s_v4" \
-      --private-ip-address "10.240.0.1{{ item }}" \
-      --subnet kthw-subnet \
-      --vnet-name kthw \
+      --name "$vm_name" \
+      --nsg-rule "NONE" \
       --os-disk-name "kthw-cp-disk-{{ item }}" \
       --os-disk-size-gb "200" \
-      --admin-username "ubuntu" \
-      --ssh-key-values /secrets/kthw_ssh_key.pub && touch "$cache_key"
-  with_sequence: start=1 count=3
+      --priority "Spot" \
+      --private-ip-address "10.240.0.1{{ item }}" \
+      --public-ip-address-allocation static \
+      --public-ip-sku Standard \
+      --size "Standard_D2s_v4" \
+      --ssh-key-values /secrets/kthw_ssh_key.pub
+      --subnet kthw-subnet \
+      --vnet-name kthw && touch "$cache_key"
+  with_sequence: start=0 count=3
 
 - name: Create the workers
   shell: >-
-    vm_name="kthw-worker-{{ item }}"; \
+    vm_name="worker-{{ item }}"; \
     cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     if test -f "$cache_key"; \
     then \
@@ -112,36 +115,59 @@
       --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
       --priority "Spot" \
       --max-price "0.04" \
+      --nsg-rule "NONE" \
       --size "Standard_D2s_v4" \
       --private-ip-address "10.240.0.2{{ item }}" \
       --subnet kthw-subnet \
       --vnet-name kthw \
-      --os-disk-name "kthw-worker-disk-{{ item }}" \
+      --os-disk-name "worker-disk-{{ item }}" \
       --os-disk-size-gb "200" \
       --admin-username "ubuntu" \
+      --public-ip-address-allocation static \
+      --public-ip-sku Standard \
       --ssh-key-values /secrets/kthw_ssh_key.pub && touch "$cache_key"
-  with_sequence: start=1 count=2
+  with_sequence: start=0 count=2
 
-- name: Configure IP forwarding on all NICs in the cluster
+- name: Configure IP forwarding for the controllers and bind NSG to the NIC
   shell:
-    vm_name="kthw-nic-{{ item }}"; \
+    vm_name="kthw-nic-controller{{ item }}"; \
     cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     test -f "$cache_key" && exit 0; \
     az network nic update -g '{{ azure_resource_group }}' \
-      --name "{{ item }}" \
-      --ip-forwarding true && touch "$cache_key"
-  with_items:
-    - kthw-control-plane-1VMNic
-    - kthw-control-plane-2VMNic
-    - kthw-control-plane-3VMNic
-    - kthw-worker-1VMNic
-    - kthw-worker-2VMNic
-    - kthw-worker-3VMNic
+      --name "controller-{{ item }}VMNic" \
+      --ip-forwarding true \
+      --network-security-group kthw-nsg && touch "$cache_key"
+  with_sequence: start=0 count=3
 
+- name: Configure IP forwarding for the workers and bind NSG to the NIC
+  shell:
+    vm_name="kthw-nic-worker{{ item }}"; \
+    cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
+    test -f "$cache_key" && exit 0; \
+    az network nic update -g '{{ azure_resource_group }}' \
+      --name "worker-{{ item }}VMNic" \
+      --ip-forwarding true \
+      --network-security-group kthw-nsg && touch "$cache_key"
+  with_sequence: start=0 count=2
+
+# LOL.
+# Be me.
+# Go through labs.
+# Try to create a lb.
+# Learn that you can't.
+# Why?
+# You can't map a public IP with a Basic SKU to a load balancer with a non-Basic SKU.
+# You can't create a network probe against a Basic SKU load balancer.
+# You can't 'upgrade' a public IP to a Standard SKU.
+# Only solution?
+# DELETE EVERYTHING AND START THE FUCK OVER.
+# Azure is death by ten thousand cuts.
+# Yes, I'm leaving this comment in the production release of this guide.
 - name: Create a public IP for our API server
   shell:
     cache_key="/cache/pip-api-server"; \
     test -f "$cache_key" && exit 0; \
     az network public-ip create -g '{{ azure_resource_group }}' \
       --name "kubernetes-the-hard-way" \
+      --sku Standard \
       --allocation-method Static && touch "$cache_key"

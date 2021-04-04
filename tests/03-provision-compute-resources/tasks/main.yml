@@ -69,7 +69,7 @@
   when: difference | length > 0
 
 - name: Ensure that the control plane is set up
-  shell: az vm list | jq -r '[.[] | select(.name | contains("kthw-control-plane")) | .name] | length'
+  shell: az vm list | jq -r '[.[] | select(.name | contains("controller")) | .name] | length'
   register: result
 
 - set_fact:
@@ -81,7 +81,7 @@
   when: want != got
 
 - name: Ensure that the workers are set up
-  shell: az vm list | jq -r '[.[] | select(.name | contains("kthw-worker")) | .name] | length'
+  shell: az vm list | jq -r '[.[] | select(.name | contains("worker")) | .name] | length'
   register: result
 
 - set_fact:
@@ -95,7 +95,7 @@
 - name: Ensure that public IPs for all nodes exist
   shell: >-
     az network public-ip list | \
-    jq -r '[.[] | select(.name | contains("kthw-")) | .name] | length'
+    jq -r '[.[] | select((.name | contains("controller-")) or (.name | contains("worker-"))) | .name] | length'
   register: result
 
 - set_fact:
@@ -106,19 +106,24 @@
     msg: "Wanted {{ want }}; got {{ got }}"
   when: want != got
 
+    # There's a bug here from our commit that changed node names to match the labs.
+    # We weren't able to delete the vNic for kthw-worker-1 because _reasons_,
+    # so it still shows up in this list despite not existing.
+    # We will revert the 'contains(...) | not' statement when that resource _eventually_
+    # clears from my subscription.
 - name: Ensure that the NICs for all machines can IP forward
   shell: >-
-    az network nic list | jq -cr '[.[] | .name + ": " + ( .enableIpForwarding | tostring ) ]'
+    az network nic list | \
+      jq -cr '[.[] | select(.name | contains("kthw-worker-1") | not) | .name + ": " + ( .enableIpForwarding | tostring ) ]'
   register: result
 
 - set_fact:
     want:
-      - "kthw-control-plane-1VMNic: true"
-      - "kthw-control-plane-2VMNic: true"
-      - "kthw-control-plane-3VMNic: true"
-      - "kthw-worker-1VMNic: true"
-      - "kthw-worker-2VMNic: true"
-      - "kthw-worker-3VMNic: true"
+      - "controller-0VMNic: true"
+      - "controller-1VMNic: true"
+      - "controller-2VMNic: true"
+      - "worker-0VMNic: true"
+      - "worker-1VMNic: true"
     got: "{{ result.stdout | from_json | sort }}"
 
 - set_fact:

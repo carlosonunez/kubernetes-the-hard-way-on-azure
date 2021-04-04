@@ -2,15 +2,18 @@
 ---
 ## Prerequisites
 
-The Ubuntu image SKU made available to Azure VMs from Canonical does not contain `wget`. You'll
-need to install it first by SSHing into each controller and using `apt`:
+The Ubuntu image SKU made available to Azure VMs from Canonical does not contain `wget`.
+You'll need to install it first by SSHing into each controller and using `apt`:
 
 ```sh
-$: for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-     jq -r '.[] | select(.name |contains("kthw-control-plane")) | .ipAddress'); \
-   do sudo apt -y install wget; \
-   done
+for idx in $(seq 0 2)
+do
+  ip=$(az network public-ip show -g kubernetes -n "controller-${idx}PublicIP" --query 'ipAddress' -o tsv)
+  ssh -i kthw_ssh_key ubuntu@$ip 'sudo apt -y install wget'
+done
 ```
+
+⚠️  **NOTE**: The commands below must be run from each controller. ⚠️
 
 # Bootstrapping an etcd Cluster Member
 ---
@@ -32,7 +35,3 @@ Then run this to get the instance's IP address:
 INTERNAL_IP=$(curl -H "Metadata: true" http://169.254.169.254/metadata/instance?api-version=2021-01-01 | \
   jq -r '.network.interface[0].ipv4.ipAddress[0].privateIpAddress')
 ```
-
-While creating the `etcd` systemd unit, change all references for `controller-`
-in `etcd.service` to `kthw-control-plane-` and increment the numbers by one. For instance,
-`controller-0` will become `kthw-control-plane-1`.

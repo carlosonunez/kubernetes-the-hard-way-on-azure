@@ -18,34 +18,30 @@ for these nodes will need to be created thereafter.
 Create the vNet and subnet in one shot with this command:
 
 ```sh
-az network vnet create -g kthw -n kthw --address-prefix 10.128.0.0/9 \
+az network vnet create -g kubernetes -n kthw --address-prefix 10.128.0.0/9 \
   --subnet-name kthw-subnet --subnet-address-prefix 10.240.0.0/24
 ```
 
 Verify that the network has been created afterwards:
 
 ```sh
-az network vnet list -g kthw | \
-  jq '.[] | \
-select(.name == "kthw") | \
-{\
-  name: .name, \
-  subnets: [ { name: .subnets[0].name, prefix: .subnets[0].addressPrefix \
-}]}'
+az network vnet list -g kubernetes --query '[].{Name: name, Subnets: (subnets[].{Name: name, Prefix: addressPrefix})}'
 ```
 
 This should produce:
 
 ```
-{
-  "name": "kthw",
-  "subnets": [
-    {
-      "name": "kthw-subnet",
-      "prefix": "10.240.0.0/24"
-    }
-  ]
-}
+[
+  {
+    "Name": "kthw",
+    "Subnets": [
+      {
+        "Name": "kthw-subnet",
+        "Prefix": "10.240.0.0/24"
+      }
+    ]
+  }
+]
 ```
 
 ### Firewall Rules
@@ -61,7 +57,7 @@ will be dropped.
 First, create the NSG object...
 
 ```sh
-az network nsg create -g kthw -n kthw-nsg
+az network nsg create -g kubernetes -n kthw-nsg
 ```
 
 ...then provision the rules as described by Hard Way:
@@ -89,13 +85,14 @@ do
   fi; 
   from="$(echo "$rule" | awk '{ print $6 }')"; 
   to="$(echo "$rule" | awk '{ print $8 }')"; 
-  az network nsg rule create -g kthw --nsg-name kthw-nsg
+  az network nsg rule create -g kubernetes --nsg-name kthw-nsg
     --name $name 
     --priority $priority
     --access $permission
     --source-address-prefixes $from
-    --source-port-ranges $port
+    --source-port-ranges "*"
     --destination-address-prefixes $to
+    --destination-port-ranges $port
 done
 ```
 
@@ -107,8 +104,12 @@ run this command:
 ```sh
 az network public-ip create -g 'kthw' \
   --name "kubernetes-the-hard-way" \
-  --allocation-method "Static"
+  --allocation-method "Static" \
+  --sku "Standard"
 ```
+
+We need to use a `Standard` SKU so that the health check probes that we will
+add when we [bootstrap Kubernetes](./deltas/08-bootstrapping-kubernetes) can be created.
 
 ## Compute Instances
 ---
@@ -116,9 +117,12 @@ az network public-ip create -g 'kthw' \
 We will use `Standard_D2s_v4` instances, as they are similar to `e2-standard-2` instances
 in Google Cloud. We will also provision them from the
 [Spot Market](https://docs.microsoft.com/en-us/azure/virtual-machines/spot-vms)
-to reduce the amount of money you spend (or credits you burn) on this lab.
+to reduce the amount of money you spend (or credits you burn) on this lab. Lastly,
+we will use Ubuntu 20.04 to match the version of Ubuntu used by the original "Kubernetes
+the Hard Way" guide.
 
-⚠️  **NOTE**: Deploying spot control plane nodes this way is not recommended for production use. ⚠️
+⚠️  **NOTE**: Deploying spot control plane nodes this way is not recommended for
+production use. ⚠️
 
 First, let's create a keypair to log into our instances with:
 
@@ -126,82 +130,99 @@ First, let's create a keypair to log into our instances with:
 ssh-keygen -t rsa -b 2048 -f kthw_ssh_key
 ```
 
-Enter an optional passphrase when prompted.
-
 Next, let's run `az vm create` to provision our control plane instances:
 
 ```sh
-for i in $(seq 1 3)
+for i in $(seq 0 2)
 do
-  az vm create -g kthw \
-    --name "kthw-control-plane-$i" \
-    --computer-name "kthw-control-plane-$i" \
+  az vm create -g kubernetes \
+    --admin-username "ubuntu" \
+    --computer-name "controller-$i" \
     --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
-    --priority "Spot" \
     --max-price "0.04" \
-    --eviction-policy "Deallocate" \
-    --size "Standard_D2s_v4" \
+    --name "controller-$i" \
+    --nsg-rule "NONE" \
+    --os-disk-name "kthw-cp-disk-$i" \
+    --os-disk-size-gb "200" \
+    --priority "Spot" \
     --private-ip-address "10.240.0.1$i" \
+    --public-ip-address-allocation static \
+    --public-ip-sku Standard \
+    --size "Standard_D2s_v4" \
+    --ssh-key-values kthw_ssh_key.pub
     --subnet kthw-subnet \
     --vnet-name kthw \
-    --os-disk-name "kthw-cp-disk-$i" \
-    --os-disk-size-gb 200 \
-    --admin-username ubuntu \
-    --ssh-key-values kthw_ssh_key.pub
 done
 ```
 
 Then we'll do the same for our worker nodes:
 
 ```sh
-for i in $(seq 1 3)
+for i in $(seq 0 2)
 do
-  az vm create -g kthw \
-    --name "kthw-worker-$i" \
-    --computer-name "kthw-control-plane-$i" \
+  az vm create -g kubernetes \
+    --admin-username "ubuntu" \
+    --computer-name "worker-$i" \
     --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
-    --priority "Spot" \
     --max-price "0.04" \
-    --eviction-policy "Deallocate" \
-    --size "Standard_D2s_v4" \
+    --name "worker-$i" \
+    --nsg-rule "NONE" \
+    --os-disk-name "kthw-cp-disk-$i" \
+    --os-disk-size-gb "200" \
+    --priority "Spot" \
     --private-ip-address "10.240.0.1$i" \
+    --public-ip-address-allocation static \
+    --public-ip-sku Standard \
+    --size "Standard_D2s_v4" \
+    --ssh-key-values kthw_ssh_key.pub
     --subnet kthw-subnet \
     --vnet-name kthw \
-    --os-disk-name "kthw-cp-disk-$i" \
-    --os-disk-size-gb 200 \
-    --admin-username ubuntu \
-    --ssh-key-values kthw_ssh_key.pub
 done
 ```
 
-Next, we will enable IP forwarding on all of the vNICs attached to all nodes in our cluster:
+Next, we will enable IP forwarding on all of the vNICs attached to all nodes in our cluster
+and associate the NIC with the NSG that we created earlier:
 
 ```sh
-for node in control-plane worker
+for node in controller worker
 do
-  for i in $(seq 1 3)
+  for i in $(seq 0 2)
   do
-    az network nic update -g kthw \
-      --name "kthw-$node-$i" \
-      --ip-forwarding true
+    az network nic update -g kubernetes \
+      --name "controller-${i}VMNic" \
+      --ip-forwarding true \
+      --network-security-group kthw-nsg
   done
 done
+```
+
+Next, we will create a public IP to front the controllers with through an Azure Load
+Balancer:
+
+```sh
+az network public-ip create -g kubernetes \
+  --name "kubernetes-the-hard-way" \
+  --sku Standard \
+  --allocation-method Static
 ```
 
 Then we will wrap up this lab by confirming that all nodes in our cluster can be SSHed into:
 
 ```sh
-$ for ip in $(az network public-ip list -g kthw | jq -r .[].ipAddress | grep -v "null"); \
-  do \
-    ssh -i kthw_ssh_key -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        "ubuntu@$ip" \
-        echo '$(hostname): $(whoami)' 2>/dev/null; \
-  done | grep "ubuntu"
-kthw-control-plane-1: ubuntu
-kthw-control-plane-2: ubuntu
-kthw-control-plane-3: ubuntu
-kthw-worker-1: ubuntu
-kthw-worker-2: ubuntu
-kthw-worker-3: ubuntu
+EXTERNAL_IPS=$(az network public-ip list -g kubernetes --query '[].ipAddress' -o tsv)
+for ip in $EXTERNAL_IPS
+do
+  ssh -i kthw_ssh_key "ubuntu$ip" 'echo: "$(hostname): $(whoami)"'
+done
+```
+
+This should produce the below:
+
+```
+controller-0: ubuntu
+controller-1: ubuntu
+controller-2: ubuntu
+worker-0: ubuntu
+worker-1: ubuntu
+worker-2: ubuntu
 ```

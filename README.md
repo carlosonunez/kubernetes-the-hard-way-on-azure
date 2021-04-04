@@ -19,8 +19,26 @@ Deploy Kubernetes from scratch on Azure based on
 
 `make deploy` to deploy the thing.
 
-### Deltas
+`make clean` to destroy all traces of your lab.
 
-There will be several differences between these labs and the ones from KTHW. Browse over
-to the [`deltas`](./deltas) folder to view them. If a delta does not exist for a KTHW lab,
-then assume that the same steps from the original lab apply.
+## Deltas
+
+The lab documentation from the [original codebase](https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/)
+have not been copied over here. You should have them open in a separate browser along with this
+reference. To see Azure-specific differences, check out the "deltas" [here](./deltas).
+
+## Here Be Dragons!
+
+This codebase roughly describes the effort required to spin up Kubernetes from scratch on Azure
+through automation. It is **not** meant for production use.
+
+If you'd like to deploy Kubernetes "bare-metal" style, check out [Cluster API](https://cluster-api.sigs.k8s.io/)
+or any of the various Kubernetes "flavors", such as [kops](https://kops.sigs.k8s.io/getting_started/azure/)
+or [kubeadm](https://kubernetes.io/docs/reference/setup-tools/kubeadm/).
+
+If you'd like to run Kubernetes on your local machine, try [k3s](https://k3s.io) or
+[kind](https://kind.sigs.k8s.io/).
+
+If you just want to use Kubernetes and not deal with any of this stuff, try a managed
+Kubernetes offering, like [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
+or [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine).

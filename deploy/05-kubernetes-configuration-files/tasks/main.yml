@@ -1,7 +1,7 @@
 ---
 - name: Create worker kubeconfigs
   shell: >-
-    instance_name="kthw-worker-{{ item }}";
+    instance_name="worker-{{ item }}";
     public_ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
       -n "kubernetes-the-hard-way" | jq -r .ipAddress);
     kubectl config set-cluster kubernetes-the-hard-way \
@@ -19,7 +19,7 @@
       --user="system:node:$instance_name" \
       --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
     kubectl config use-context default --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig"
-  with_sequence: start=1 count=2
+  with_sequence: start=0 count=2
 
 - name: Create kube-proxy kubeconfig
   shell: >-
@@ -44,15 +44,15 @@
 - name: Create controller kubeconfigs
   shell: >-
     config="{{ item.split(';')[0] }}";
-    user="{{ item.split(';')[1] }}"
+    user="{{ item.split(';')[1] }}";
     kubectl config set-cluster kubernetes-the-hard-way \
       --certificate-authority=/secrets/ca.pem \
       --embed-certs=true \
       --server=https://127.0.0.1:6443 \
       --kubeconfig="/kubeconfigs/${config}.kubeconfig";
     kubectl config set-credentials "$user" \
-      --client-certificate="/secrets/{{ item }}.pem" \
-      --client-key="/secrets/{{ item }}-key}.pem" \
+      --client-certificate="/secrets/${config}.pem" \
+      --client-key="/secrets/${config}-key.pem" \
       --embed-certs=true \
       --kubeconfig="/kubeconfigs/${config}.kubeconfig";
     kubectl config set-context default \
@@ -71,7 +71,7 @@
     then return 0;
     fi;
     for ip in $(az network public-ip list | \
-      jq -r '.[] | select(.name | contains("kthw-control-plane-{{ item }}")) | .ipAddress' \
+      jq -r '.[] | select(.name | contains("controller-{{ item }}")) | .ipAddress' \
       | grep -v "null"); \
     do \
       for file in "admin.kubeconfig" \
@@ -83,7 +83,7 @@
             "/kubeconfigs/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
       done; \
     done;
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
   register: result
 
 - name: Copy kubeconfigs to workers
@@ -93,10 +93,10 @@
     then return 0;
     fi;
     for ip in $(az network public-ip list | \
-      jq -r '.[] | select(.name | contains("kthw-worker-{{ item }}")) | .ipAddress' \
+      jq -r '.[] | select(.name | contains("worker-{{ item }}")) | .ipAddress' \
       | grep -v "null"); \
     do \
-      for file in "kthw-worker-{{ item }}.kubeconfig" \
+      for file in "worker-{{ item }}.kubeconfig" \
         "kube-proxy.kubeconfig";
       do \
         scp -i /secrets/kthw_ssh_key -o StrictHostKeyChecking=no \
@@ -104,5 +104,5 @@
             "/kubeconfigs/$file" "ubuntu@$ip:/home/ubuntu/" && touch "$cache_key"; \
       done; \
     done;
-  with_sequence: start=1 count=3
+  with_sequence: start=0 count=3
   register: result

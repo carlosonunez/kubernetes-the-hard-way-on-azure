@@ -1,0 +1,217 @@
+---
+- name: Get the Kubernetes API server public IP address
+  shell: >-
+    cache_key="/cache/kubernetes_public_ip_address"; \
+    test -f "$cache_key" && { cat "$cache_key" && exit 0; }; \
+    az network public-ip show -g '{{ azure_resource_group }}' \
+      --name kubernetes-the-hard-way | jq -r .ipAddress | tee "$cache_key"
+  register: result
+
+- set_fact:
+    kubernetes_public_ip: "{{ result.stdout }}"
+
+- name: /etc/kubernetes/config exists
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      find /etc/kubernetes/config -type d;
+    done
+  register: result
+
+- set_fact:
+    want: "3"
+    got: "{{ result.stdout_lines | length }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
+
+- name: Ensure Kubernetes binaries are present and are the correct version
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" -- \
+          'printf "$(hostname -s): kubectl version " && kubectl version --client=true -o json | jq -r .clientVersion.gitVersion; \
+          printf "$(hostname -s): kube-apiserver version " && kube-apiserver --version | sed "s/Kubernetes //"; \
+          printf "$(hostname -s): kube-controller-manager version " && kube-controller-manager --version | sed "s/Kubernetes //"; \
+          printf "$(hostname -s): kube-scheduler version " && kube-scheduler --version | sed "s/Kubernetes //";';
+    done
+  register: result
+
+- set_fact:
+    data:
+      - "controller-0: {{ item }} version v{{ kubernetes_version }}"
+      - "controller-1: {{ item }} version v{{ kubernetes_version }}"
+      - "controller-2: {{ item }} version v{{ kubernetes_version }}"
+  register: versions
+  with_items:
+    - kubectl
+    - kube-apiserver
+    - kube-controller-manager
+    - kube-scheduler
+
+- set_fact:
+    want: "{{ versions.results | map(attribute='ansible_facts.data') | flatten }}"
+    got: "{{ result.stdout_lines }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
+
+- name: Certificates and encryption key are present
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'find /var/lib/kubernetes -name "*.pem" -o -name "*.yaml" | grep -v kube-scheduler'
+    done
+  register: result
+
+- set_fact:
+    want: "21"
+    got: "{{ result.stdout_lines | length }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
+
+- name: Kubernetes control plane services started
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'for svc in kube-apiserver kube-controller-manager kube-scheduler; \
+        do systemctl is-active --quiet $svc || { echo "Not active: $svc"; exit 1; }; \
+       done';
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
+
+- name: Verify /healthz exists
+  shell:
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'test -h /etc/nginx/sites-enabled/kubernetes.default.svc.cluster.local || exit 1';
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got
+
+- name: Confirm that cluster is okay
+  shell:
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'kubectl get componentstatuses --kubeconfig admin.kubeconfig -o json' | \
+        jq -r '.items[] | .metadata.name + ", " + .conditions[0].message';
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - "scheduler, ok"
+      - "controller-manager, ok"
+      - 'etcd-0, {"health":"true"}'
+      - 'etcd-1, {"health":"true"}'
+      - 'etcd-2, {"health":"true"}'
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
+
+- name: Verify health check is being served up
+  shell:
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+        'curl -H "Host{{ ':' }} kubernetes.default.svc.cluster.local" -w "%{http_code};" -so /dev/null http://127.0.0.1/healthz';
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "200;200;200;"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}"
+  when: want != got
+
+- name: Verify that system:kube-apiserver-to-kubelet role exists from a different controller
+  shell:
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$(az network public-ip show -g '{{ azure_resource_group }}' -n controller-1PublicIP | jq -r .ipAddress)" \
+      'kubectl --kubeconfig admin.kubeconfig get clusterrole | grep -q apiserver-to-kubelet'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}, errors: {{ result.stderr_lines }}"
+  when: want != got
+
+- name: Verify that system:kube-apiserver role binding exists
+  shell:
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$(az network public-ip show -g '{{ azure_resource_group }}' -n controller-1PublicIP | jq -r .ipAddress)" \
+      'kubectl --kubeconfig admin.kubeconfig get clusterrolebinding | grep -q system:kube-apiserver'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}, errors: {{ result.stderr_lines }}"
+  when: want != got
+
+# I can't get this ca certificate to verify, even after a clean install. not sure why.
+- name: Verify health check is being served up from public IP address
+  shell:
+    curl -k -s https://{{ kubernetes_public_ip }}:6443/version | jq -r .gitVersion;
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: "v{{ kubernetes_version }}"
+    got: "{{ result.stdout }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}"
+  when: want != got
