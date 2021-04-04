@@ -47,7 +47,7 @@
       --priority $priority
       --access $permission
       --source-address-prefixes $from
-      --source-port-ranges $port
+      --source-port-ranges "*"
       --protocol $protocol
       --destination-address-prefixes $to
       --destination-port-ranges $port"; \
@@ -88,6 +88,7 @@
       --priority "Spot" \
       --max-price "0.04" \
       --size "Standard_D2s_v4" \
+      --nsg-rule "NONE" \
       --private-ip-address "10.240.0.1{{ item }}" \
       --public-ip-address-allocation static \
       --public-ip-sku Standard \
@@ -114,6 +115,7 @@
       --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts-gen2:20.04.202103230" \
       --priority "Spot" \
       --max-price "0.04" \
+      --nsg-rule "NONE" \
       --size "Standard_D2s_v4" \
       --private-ip-address "10.240.0.2{{ item }}" \
       --subnet kthw-subnet \
@@ -126,24 +128,26 @@
       --ssh-key-values /secrets/kthw_ssh_key.pub && touch "$cache_key"
   with_sequence: start=0 count=2
 
-- name: Configure IP forwarding for the controllers
+- name: Configure IP forwarding for the controllers and bind NSG to the NIC
   shell:
     vm_name="kthw-nic-controller{{ item }}"; \
     cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     test -f "$cache_key" && exit 0; \
     az network nic update -g '{{ azure_resource_group }}' \
       --name "controller-{{ item }}VMNic" \
-      --ip-forwarding true && touch "$cache_key"
+      --ip-forwarding true \
+      --network-security-group kthw-nsg && touch "$cache_key"
   with_sequence: start=0 count=3
 
-- name: Configure IP forwarding for the workers
+- name: Configure IP forwarding for the workers and bind NSG to the NIC
   shell:
     vm_name="kthw-nic-worker{{ item }}"; \
     cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     test -f "$cache_key" && exit 0; \
     az network nic update -g '{{ azure_resource_group }}' \
       --name "worker-{{ item }}VMNic" \
-      --ip-forwarding true && touch "$cache_key"
+      --ip-forwarding true \
+      --network-security-group kthw-nsg && touch "$cache_key"
   with_sequence: start=0 count=2
 
 # LOL.

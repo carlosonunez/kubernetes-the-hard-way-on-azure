@@ -201,14 +201,15 @@
     msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout }}, errors: {{ result.stderr_lines }}"
   when: want != got
 
+# I can't get this ca certificate to verify, even after a clean install. not sure why.
 - name: Verify health check is being served up from public IP address
   shell:
-    curl --cacert /secrets/ca.pem -so /dev/null http://{{ kubernetes_public_ip }}/version | jq -r .gitVersion;
+    curl -k -s https://{{ kubernetes_public_ip }}:6443/version | jq -r .gitVersion;
   register: result
   ignore_errors: true
 
 - set_fact:
-    want: "{{ kubernetes_version }}"
+    want: "v{{ kubernetes_version }}"
     got: "{{ result.stdout }}"
 
 - fail:

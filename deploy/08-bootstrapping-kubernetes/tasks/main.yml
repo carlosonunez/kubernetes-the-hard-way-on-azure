@@ -294,6 +294,7 @@
       "ubuntu@$ip_address" \
       'kubectl apply -f crb.yaml --kubeconfig admin.kubeconfig' && touch "$cache_key"
 
+# TODO: doc
 - name: Create the load balancer for our Kubernetes API servers
   shell:
     cache_key="/cache/create-lb.yaml";
@@ -302,6 +303,7 @@
       -n kubernetes \
       --sku Standard && touch "$cache_key"
 
+# TODO: doc
 - name: Create the frontend IP for the lb
   shell:
     cache_key="/cache/create-lb-frontend-ip";
@@ -316,6 +318,7 @@
 # default nginx website is being served (i.e. that nginx is running).
 # This isn't as comprehensive as checking /healthz specifically, but
 # given its purpose for this guide, this should be enough.
+# TODO: doc
 - name: Add the health check probe
   shell:
     cache_key="/cache/create-lb-probe.yaml";
@@ -327,19 +330,15 @@
       --port 80 \
       --path /
 
-- name: Add NSG to allow Azure probing service to hit controllers in backend pool
-  shell:
-    cache_key="/cache/create-lb-probe-nsg.yaml";
-    test -f "$cache_key" && exit 0;
-    az network nsg create -g '{{ azure_resource_group }}' -n kthw-lb-prober-nsg && touch "$cache_key"
-
 # Unlike GCP, this range is NOT documented in official documentation. I just
 # happened to remmeber this being a problem at a previous client.
-- shell:
+# TODO: doc
+- name: Add NSG rule to allow Azure probing service to hit controllers in backend pool
+  shell:
     cache_key="/cache/create-lb-probe-nsg-rule.yaml";
     test -f "$cache_key" && exit 0;
     az network nsg rule create -g '{{ azure_resource_group }}' \
-      --nsg-name kthw-lb-prober-nsg \
+      --nsg-name kthw-nsg \
       -n allow-msft-prober-into-controllers \
       --priority "110" \
       --access allow \
@@ -349,14 +348,17 @@
       --destination-address-prefixes "*" \
       --destination-port-ranges "80" && touch "$cache_key"
 
+# It appears that the nodes in the backend pool need to be added by their
+# internal IPs, not their external ones.
+# TODO: doc
 - name: Create backend pool for load balancer and add the controllers onto it
   shell:
     cache_key="/cache/lb-create-backend-pool"; \
     test -f "$cache_key" && exit 0; \
     backend_commands=""; \
     idx=0; \
-    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    for ip_address in $(az network nic list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipConfigurations[0].privateIpAddress');
     do \
       backend_commands="${backend_commands}--backend-address name=controller-$idx ip-address=$ip_address ";
       idx=$((idx+1));
@@ -367,6 +369,7 @@
       --vnet kthw \
       ${backend_commands} && touch "$cache_key"
 
+# TODO: doc
 - name: "Bind the public IP to the backend pool at port 6443"
   shell:
     cache_key="/cache/create-lb-rule.yaml";
