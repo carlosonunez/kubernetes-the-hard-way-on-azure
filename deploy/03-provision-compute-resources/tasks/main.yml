@@ -42,7 +42,7 @@
     fi; \
     from="$(echo "{{ item }}" | awk '{% raw %}{ print $6 }{% endraw %}')"; \
     to="$(echo "{{ item }}" | awk '{% raw %}{ print $8 }{% endraw %}')"; \
-    cmd="az network nsg rule create -g kthw --nsg-name kthw-nsg
+    cmd="az network nsg rule create -g {{ azure_resource_group }} --nsg-name kthw-nsg
       --name $name  
       --priority $priority
       --access $permission

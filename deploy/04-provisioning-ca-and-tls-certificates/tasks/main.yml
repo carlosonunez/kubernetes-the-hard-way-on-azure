@@ -78,7 +78,7 @@
     then \
       internal_ips=$(cat "$internal_cache_key"); \
     else \
-      internal_ips=$(az network nic list -g kthw | \
+      internal_ips=$(az network nic list -g {{ azure_resource_group }} | \
         jq -r '[.[] | select(.name | contains("controller")) | .ipConfigurations[].privateIpAddress] | join(",")') && \
       echo "$internal_ips" > "$internal_cache_key"; \
     fi; \
