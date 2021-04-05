@@ -1,0 +1,21 @@
+---
+- name: Confirm that vNet routes exist for each node and pod CIDR
+  shell: az network route-table route list -g '{{ azure_resource_group }}' \
+    --route-table-name kthw-route-table -o json | \
+    jq -r '.[] | .name + "{{ ':' }} " + .addressPrefix + " --> " + (if .nextHopIpAddress then .nextHopIpAddress else "" end) + " " + .nextHopType'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - "default-route-VNetLocal: 10.240.0.0/16 -->  VnetLocal"
+      - "kubernetes-route-10-200-0-0-24: 10.200.0.0/24 --> 10.240.0.20 VirtualAppliance"
+      - "kubernetes-route-10-200-1-0-24: 10.200.1.0/24 --> 10.240.0.21 VirtualAppliance"
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
