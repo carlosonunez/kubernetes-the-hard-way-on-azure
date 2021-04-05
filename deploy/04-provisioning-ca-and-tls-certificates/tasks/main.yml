@@ -1,13 +1,47 @@
 ---
-- name: Create the CA certificate and private key
-  copy:
-    dest: "/secrets/{{ item.split('.')[0] }}.json"
-    content: "{{ lookup('template', item) | from_yaml | to_json }}"
+- name: Determine which certificates already exist
+  stat:
+    path: "/secrets/{{ item }}.pem"
+  register: result
   with_items:
-    - ca-config.yaml.j2
-    - ca-csr.yaml.j2
+    - admin
+    - admin-key
+    - ca
+    - ca-key
+    - kube-controller-manager
+    - kube-controller-manager-key
+    - kube-proxy
+    - kube-proxy-key
+    - kube-scheduler
+    - kube-scheduler-key
+    - kubernetes
+    - kubernetes-key
+    - service-account
+    - service-account-key
+    - worker-0
+    - worker-0-key
+    - worker-1
+    - worker-1-key
+    - worker-2
+    - worker-2-key
 
-- shell: cfssl gencert -initca /secrets/ca-csr.json | cfssljson -bare /secrets/ca
+- set_fact:
+    existing_cert_names: "{{ result.results | selectattr('stat.exists', 'equalto', True) | map(attribute='item') | flatten }}"
+    existing_cert_values: "{{ result.results | selectattr('stat.exists', 'equalto', True) | map(attribute='stat.exists') | flatten }}"
+
+- set_fact:
+    existing_certs: "{{ dict(existing_cert_names | zip(existing_cert_values)) }}"
+
+- block:
+  - name: Create the CA certificate and private key
+    copy:
+      dest: "/secrets/{{ item.split('.')[0] }}.json"
+      content: "{{ lookup('template', item) | from_yaml | to_json }}"
+    with_items:
+      - ca-config.yaml.j2
+      - ca-csr.yaml.j2
+  - shell: cfssl gencert -initca /secrets/ca-csr.json | cfssljson -bare /secrets/ca
+  when: "'ca' not in existing_certs"
 
 - name: Create admin, kube-proxy certificates
   copy:
@@ -19,6 +53,7 @@
     - kube-controller-manager
     - kube-scheduler
     - service-account
+  when: item not in existing_certs
 
 - shell: >-
     cfssl gencert \
@@ -33,12 +68,12 @@
     - kube-controller-manager
     - kube-scheduler
     - service-account
+  when: item not in existing_certs
 
 - name: Create worker certificates
-  copy:
-    dest: "/secrets/worker-{{ item }}-csr.json"
-    content: "{{ lookup('template', 'kubelet-csr.yaml.j2') | from_yaml | to_json }}"
-  with_sequence: start=0 count=3
+  copy: dest="/secrets/worker-{{ item }}-csr.json" content="{{ lookup('template', 'kubelet-csr.yaml.j2') | from_yaml | to_json }}"
+  with_sequence: start=0 count=2
+  when: '"worker-0" not in existing_certs or "worker-1" not in existing_certs'
 
 - shell: >-
     if test -f "/cache/04-external-ip-{{ item }}"; \
