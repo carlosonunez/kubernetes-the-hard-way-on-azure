@@ -5,7 +5,7 @@
 
 - name: Install wget
   shell:
-    cache_key="/cache/install_wget_controller"; \
+    cache_key="/cache/07-install_wget_controller"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -16,7 +16,7 @@
 
 - name: Install jq
   shell:
-    cache_key="/cache/install_jq_controller"; \
+    cache_key="/cache/07-install_jq_controller"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -27,7 +27,7 @@
 
 - name: Download etcd on all controllers
   shell:
-    cache_key="/cache/download_etcd_controller"; \
+    cache_key="/cache/07-download_etcd_controller"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -37,7 +37,7 @@
 
 - name: Install etcd on all controllers
   shell:
-    cache_key="/cache/install_etcd_controller"; \
+    cache_key="/cache/07-install_etcd_controller"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -47,7 +47,7 @@
 
 - name: Create etcd folders
   shell:
-    cache_key="/cache/create_etcd_folders"; \
+    cache_key="/cache/07-create_etcd_folders"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -58,7 +58,7 @@
 
 - name: Add certificates into /etc/etcd
   shell:
-    cache_key="/cache/etcd_certs"; \
+    cache_key="/cache/07-etcd_certs"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -69,7 +69,7 @@
 
 - name: Gather hostnames
   shell: >-
-    cache_key="/cache/controller_hostname_{{ item }}"; \
+    cache_key="/cache/07-controller_hostname_{{ item }}"; \
     test -f "$cache_key" && { cat "$cache_key"; exit 0; }; \
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$(az network public-ip show -g '{{ azure_resource_group }}' \
@@ -82,7 +82,7 @@
 
 - name: Gather internal IP addresses via Azure IMDS
   shell: >-
-    cache_key="/cache/ipaddr_hostname_{{ item }}"; \
+    cache_key="/cache/07-ipaddr_hostname_{{ item }}"; \
     test -f "$cache_key" && { cat "$cache_key"; exit 0; }; \
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$(az network public-ip show -g '{{ azure_resource_group }}' \
@@ -106,7 +106,7 @@
 
 - name: Distribute systemd units
   shell:
-    cache_key="/cache/systemd_controller-{{ item }}"; \
+    cache_key="/cache/07-systemd_controller-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
         --name controller-{{ item }}PublicIP | jq -r .ipAddress); \
@@ -118,7 +118,7 @@
 
 - name: Move units into the right place
   shell:
-    cache_key="/cache/systemd_controller-mv-{{ item }}"; \
+    cache_key="/cache/07-systemd_controller-mv-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
         --name controller-{{ item }}PublicIP | jq -r .ipAddress); \
@@ -129,7 +129,7 @@
 
 - name: Start etcd
   shell:
-    cache_key="/cache/systemd_start-{{ item }}"; \
+    cache_key="/cache/07-systemd_start-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
         --name controller-{{ item }}PublicIP | jq -r .ipAddress); \

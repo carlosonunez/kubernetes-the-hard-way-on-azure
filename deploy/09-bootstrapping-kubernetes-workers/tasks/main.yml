@@ -1,7 +1,7 @@
 ---
 - name: Install jq
   shell:
-    cache_key="/cache/install_jq_worker"; \
+    cache_key="/cache/09-install_jq_worker"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
@@ -21,7 +21,7 @@
 
 - name: Install core networking binaries
   shell:
-    cache_key="/cache/install-net-utilities"; \
+    cache_key="/cache/09-install-net-utilities"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
@@ -32,7 +32,7 @@
 
 - name: Create installation directories
   shell:
-    cache_key="/cache/create-install-dirs"; \
+    cache_key="/cache/09-create-install-dirs"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
@@ -45,10 +45,14 @@
         /var/lib/kubernetes
         /var/run/kubernetes';
     done && touch "$cache_key"
+  register: result
+
+- debug:
+    msg: "result: {{ result }}"
 
 - name: Download worker binaries
   shell:
-    cache_key="/cache/download-worker-binaries"; \
+    cache_key="/cache/09-download-worker-binaries"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
@@ -65,7 +69,7 @@
 
 - name: Install containerd to /bin
   shell:
-    cache_key="/cache/install_containerd"; \
+    cache_key="/cache/09-install_containerd"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
@@ -78,7 +82,7 @@
 
 - name: Install runc, crictl and kube components to /usr/local/bin
   shell:
-    cache_key="/cache/install_kube_stuff"; \
+    cache_key="/cache/09-install_kube_stuff"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
@@ -92,7 +96,7 @@
 
 - name: Install the cni plugins into /opt/cni/bin
   shell:
-    cache_key="/cache/install_cni_plugins"; \
+    cache_key="/cache/09-install_cni_plugins"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
@@ -114,7 +118,7 @@
 
 - name: Distribute CNI configurations
   shell:
-    cache_key="/cache/cni-config"; \
+    cache_key="/cache/09-cni-config"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -132,7 +136,7 @@
 
 - name: Move CNI configurations to the right place
   shell:
-    cache_key="/cache/cni-config-move"; \
+    cache_key="/cache/09-cni-config-move"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -151,7 +155,7 @@
 
 - name: Distribute the containerd config
   shell:
-    cache_key="/cache/containerd-config"; \
+    cache_key="/cache/09-containerd-config"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -166,7 +170,7 @@
 
 - name: Move containerd configurations to the right place
   shell:
-    cache_key="/cache/containerd-config-move"; \
+    cache_key="/cache/09-containerd-config-move"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -185,7 +189,7 @@
 
 - name: Distribute the containerd service
   shell:
-    cache_key="/cache/containerd-service"; \
+    cache_key="/cache/09-containerd-service"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -200,7 +204,7 @@
 
 - name: Move containerd configurations to the right place
   shell:
-    cache_key="/cache/containerd-service-move"; \
+    cache_key="/cache/09-containerd-service-move"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -225,7 +229,7 @@
 
 - name: Distribute the configs
   shell:
-    cache_key="/cache/kubelet-and-kube-proxy-config-{{ item }}"; \
+    cache_key="/cache/09-kubelet-and-kube-proxy-config-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -247,7 +251,7 @@
 # route and broke them apart.
 - name: Move worker-specific files to their correct places
   shell:
-    cache_key="/cache/worker-specific-files-{{ item }}"; \
+    cache_key="/cache/09-worker-certs-files-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
         --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
@@ -263,7 +267,7 @@
 
 - name: Move kube-proxy configs to the right place
   shell:
-    cache_key="/cache/kube-proxy-move-{{ item }}"; \
+    cache_key="/cache/09-kube-proxy-move-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
         --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
@@ -275,7 +279,7 @@
 
 - name: Move kube-proxy kubeconfig to the right place
   shell:
-    cache_key="/cache/kube-proxy-config-move"; \
+    cache_key="/cache/09-kube-proxy-config-move"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -297,7 +301,7 @@
 
 - name: Distribute the kubelet service
   shell:
-    cache_key="/cache/kubelet-service-{{ item }}"; \
+    cache_key="/cache/09-kubelet-service-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -315,7 +319,7 @@
 
 - name: Move kubelet configurations to the right place
   shell:
-    cache_key="/cache/kubelet-service-move-{{ item }}"; \
+    cache_key="/cache/09-kubelet-service-move-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
@@ -332,7 +336,7 @@
 
 - name: Start containerd kubelet and kube-proxy
   shell:
-    cache_key="/cache/kubelet-service-start"; \
+    cache_key="/cache/09-kubelet-service-start"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \

@@ -41,10 +41,10 @@
   with_sequence: start=0 count=3
 
 - shell: >-
-    if test -f "/cache/internal-ip-{{ item }}" && test -f "/cache/external-ip-{{ item }}"; \
+    if test -f "/cache/04-external-ip-{{ item }}"; \
     then \
-      internal_ip=$(cat "/cache/internal-ip-{{ item }}"); \
-      external_ip=$(cat "/cache/external-ip-{{ item }}"); \
+      internal_ip=$(cat "/cache/04-internal-ip-{{ item }}"); \
+      external_ip=$(cat "/cache/04-external-ip-{{ item }}"); \
     else \
       internal_ip=$(\
         az network nic show -n "worker-{{ item }}VMNic" -g '{{ azure_resource_group }}' | \
@@ -52,8 +52,8 @@
       external_ip=$(\
         az network nic show -n "worker-{{ item }}PublicIP" -g '{{ azure_resource_group }}' | \
         jq -r .ipAddress); \
-      printf "$internal_ip" > "/cache/internal-ip-{{ item }}"; \
-      printf "$external_ip" > "/cache/external-ip-{{ item }}"; \
+      printf "$internal_ip" > "/cache/04-internal-ip-{{ item }}"; \
+      printf "$external_ip" > "/cache/04-external-ip-{{ item }}"; \
     fi; \
     hostname=$(hostname); \
     cfssl gencert \
@@ -63,17 +63,19 @@
       -hostname="$hostname,$external_ip,$internal_ip" \
       -profile=kubernetes \
       "/secrets/worker-{{ item }}-csr.json" | cfssljson -bare "/secrets/worker-{{ item }}"
-  with_sequence: start=0 count=3
+  with_sequence: start=0 count=2
+  when: '"worker-0" not in existing_certs or "worker-1" not in existing_certs'
 
 - name: Create api-server certificate
   copy:
     dest: "/secrets/kubernetes-csr.json"
     content: "{{ lookup('template', 'kubernetes-csr.yaml.j2') | from_yaml | to_json }}"
+  when: "'kubernetes' not in existing_certs"
 
 - shell: >-
     kubernetes_hostnames="kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster,kubernetes.default.svc.cluster.local,kubernetes.svc.cluster.local"; \
-    internal_cache_key="/cache/internal-ip-api-server"; \
-    external_cache_key="/cache/external-ip-api-server"; \
+    internal_cache_key="/cache/04-internal-ip-api-server"; \
+    external_cache_key="/cache/04-external-ip-api-server"; \
     if test -f "$internal_cache_key"; \
     then \
       internal_ips=$(cat "$internal_cache_key"); \
@@ -97,10 +99,11 @@
       -hostname="10.32.0.1,$internal_ips,$api_server_ip,127.0.0.1,$kubernetes_hostnames" \
       -profile=kubernetes \
       "/secrets/kubernetes-csr.json" | cfssljson -bare "/secrets/kubernetes"
+  when: "'kubernetes' not in existing_certs"
 
 - name: Copy worker certs into workers
   shell: 
-    cache_key="/cache/scp-worker-{{ item }}";
+    cache_key="/cache/04-scp-worker-{{ item }}";
     if test -f "$cache_key";
     then return 0;
     fi;
@@ -120,7 +123,7 @@
 
 - name: Copy controller certs into controllers
   shell: 
-    cache_key="/cache/scp-controller-{{ item }}"; \
+    cache_key="/cache/04-scp-controller-{{ item }}"; \
     if test -f "$cache_key";
     then return 0;
     fi;
