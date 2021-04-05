@@ -1,4 +1,13 @@
 ---
+- set_fact:
+    crictl_url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v{{ crictl_version }}/crictl-v{{ crictl_version }}-linux-amd64.tar.gz"
+    runc_url: "https://github.com/opencontainers/runc/releases/download/v{{ runc_version }}/runc.amd64"
+    cni_url: "https://github.com/containernetworking/plugins/releases/download/v{{ cni_version }}/cni-plugins-linux-amd64-v{{ cni_version }}.tgz"
+    containerd_url: "https://github.com/containerd/containerd/releases/download/v{{ containerd_version }}/containerd-{{ containerd_version }}-linux-amd64.tar.gz"
+    kubectl_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kubectl"
+    kube_proxy_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kube-proxy"
+    kubelet_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kubelet"
+
 - name: Install jq
   shell:
     cache_key="/cache/09-install_jq_worker"; \
@@ -9,15 +18,6 @@
       "ubuntu@$ip_address" "sudo apt -y update && sudo apt -y install jq";
     done && touch "$cache_key"
   register: result
-
-- set_fact:
-    crictl_url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v{{ crictl_version }}/crictl-v{{ crictl_version }}-linux-amd64.tar.gz"
-    runc_url: "https://github.com/opencontainers/runc/releases/download/v{{ runc_version }}/runc.amd64"
-    cni_url: "https://github.com/containernetworking/plugins/releases/download/v{{ cni_version }}/cni-plugins-linux-amd64-v{{ cni_version }}.tgz"
-    containerd_url: "https://github.com/containerd/containerd/releases/download/v{{ containerd_version }}/containerd-{{ containerd_version }}-linux-amd64.tar.gz"
-    kubectl_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kubectl"
-    kube_proxy_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kube-proxy"
-    kubelet_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kubelet"
 
 - name: Install core networking binaries
   shell:
@@ -249,7 +249,7 @@
 # I couldn't do it in one command; kept getting 'sudo: command not found' because
 # part of the command would run in the container. VERY frustrating. Took the easier
 # route and broke them apart.
-- name: Move worker-specific files to their correct places
+- name: Move worker-specific certificates and the CA to their correct places
   shell:
     cache_key="/cache/09-worker-certs-files-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
@@ -257,11 +257,22 @@
         --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
     ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" \
-      'sudo mv /tmp/kubelet-config-{{ item }}.yaml
-        worker-{{ item }}.pem
-        worker-{{ item }}-key.pem /var/lib/kubelet/;
-       sudo mv worker-{{ item }}.kubeconfig /var/lib/kubelet/kubeconfig;
+      'sudo mv worker-{{ item }}.pem worker-{{ item }}-key.pem /var/lib/kubelet/;
        sudo mv ca.pem /var/lib/kubernetes/' && touch "$cache_key"
+  register: result
+  with_sequence: start=0 count=2
+
+- name: Move worker-specific kubeconfigs to their correct places
+  shell:
+    cache_key="/cache/09-worker-kubeconfigs-files-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+       'sudo mv worker-{{ item }}.kubeconfig /var/lib/kubelet/kubeconfig;
+       sudo mv /tmp/kubelet-config-{{ item }}.yaml /var/lib/kubelet/kubelet-config.yaml;' \
+        && touch "$cache_key"
   register: result
   with_sequence: start=0 count=2
 
