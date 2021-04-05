@@ -60,7 +60,7 @@
           /usr/local/bin/runc \
           /bin/containerd \
           /opt/cni/bin/cni;
-        do test -f "$file" && echo "$file"; \
+        do test -f "$file" && echo "$(hostname): $file";
         done';
     done
   register: result
@@ -68,12 +68,18 @@
 
 - set_fact:
     want:
-      - /usr/local/bin/crictl
-      - /usr/local/bin/kubectl
-      - /usr/local/bin/kube-proxy
-      - /usr/local/bin/kubelet
-      - /usr/local/bin/runc
-      - /bin/containerd
+      - "worker-0: /usr/local/bin/crictl"
+      - "worker-0: /usr/local/bin/kubectl"
+      - "worker-0: /usr/local/bin/kube-proxy"
+      - "worker-0: /usr/local/bin/kubelet"
+      - "worker-0: /usr/local/bin/runc"
+      - "worker-0: /bin/containerd"
+      - "worker-1: /usr/local/bin/crictl"
+      - "worker-1: /usr/local/bin/kubectl"
+      - "worker-1: /usr/local/bin/kube-proxy"
+      - "worker-1: /usr/local/bin/kubelet"
+      - "worker-1: /usr/local/bin/runc"
+      - "worker-1: /bin/containerd"
     got: "{{ result.stdout_lines | unique }}"
 
 - set_fact:
@@ -83,3 +89,25 @@
     msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
   when: diff | length > 0 
 
+- name: Ensure pod CIDR is present in bridge network
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'jq -r ".ipam.ranges[0][0].subnet" /etc/cni/net.d/10-bridge.conf'
+    done
+  register: result
+
+- set_fact:
+    want:
+      - 10.200.0.0/24
+      - 10.200.1.0/24
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0 

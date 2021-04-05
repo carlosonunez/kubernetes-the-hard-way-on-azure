@@ -1,4 +1,15 @@
 ---
+- name: Install jq
+  shell:
+    cache_key="/cache/install_jq_worker"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" "sudo apt -y update && sudo apt -y install jq";
+    done && touch "$cache_key"
+  register: result
+
 - set_fact:
     crictl_url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v{{ crictl_version }}/crictl-v{{ crictl_version }}-linux-amd64.tar.gz"
     runc_url: "https://github.com/opencontainers/runc/releases/download/v{{ runc_version }}/runc.amd64"
@@ -90,3 +101,45 @@
       'sudo tar -xvf "{{ cni_url.split("/")[-1] }}" -C /opt/cni/bin';
     done && touch "$cache_key"
 
+- name: Create the bridge network configuration for the CNI
+  copy:
+    dest: "/secrets/10-bridge.conf.{{ item }}"
+    content: "{{ lookup('template', '10-bridge.conf') }}"
+  with_sequence: start=0 count=2
+
+- name: Create the loopback network configuration for the CNI
+  copy:
+    dest: "/secrets/99-loopback.conf"
+    content: "{{ lookup('template', '99-loopback.conf') }}"
+
+- name: Distribute CNI configurations
+  shell:
+    cache_key="/cache/cni-config"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      for file in "10-bridge.conf.$idx" "99-loopback.conf"; \
+      do \
+        scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+          -o StrictHostKeyChecking=no \
+          "/secrets/$file" \
+          "ubuntu@$ip_address:/tmp";
+      done;
+    done && touch "$cache_key"
+  register: result
+
+- name: Move CNI configurations to the right place
+  shell:
+    cache_key="/cache/cni-config-move"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "mv /tmp/10-bridge.conf.$idx /tmp/10-bridge.conf && sudo mv /tmp/*.conf /etc/cni/net.d/";
+    done && touch "$cache_key"
+  register: result
