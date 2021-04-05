@@ -4,6 +4,10 @@ ENV_FILE := $(PWD)/.env
 DOCKER_COMPOSE := docker-compose
 KUBERNETES_VERSION ?= 1.18.6
 ETCD_VERSION ?= 3.4.10
+CRICTL_VERSION ?= 1.18.0
+RUNC_VERSION ?= 1.0.0-rc91
+CONTAINERD_VERSION ?= 1.3.6
+CNI_VERSION ?= 0.8.6
 AZURE_RESOURCE_GROUP ?= kubernetes
 
 ifneq (,$(wildcard $(ENV_FILE)))
@@ -52,6 +56,10 @@ tests:
 		--extra-vars "azure_region=$$AZURE_REGION" \
 		--extra-vars "azure_resource_group=$(AZURE_RESOURCE_GROUP)" \
     --extra-vars "etcd_version=$(ETCD_VERSION)" \
+		--extra-vars "crictl_version=$(CRICTL_VERSION)" \
+		--extra-vars "runc_version=$(RUNC_VERSION)" \
+		--extra-vars "cni_version=$(CNI_VERSION)" \
+		--extra-vars "containerd_version=$(CONTAINERD_VERSION)" \
     --extra-vars "kubernetes_version=$(KUBERNETES_VERSION)" \
 		tests.yaml; \
 	result=$$?; \
@@ -86,6 +94,10 @@ deploy:
 		--extra-vars "azure_region=$$AZURE_REGION" \
 		--extra-vars "azure_resource_group=$(AZURE_RESOURCE_GROUP)" \
     --extra-vars "etcd_version=$(ETCD_VERSION)" \
+		--extra-vars "crictl_version=$(CRICTL_VERSION)" \
+		--extra-vars "runc_version=$(RUNC_VERSION)" \
+		--extra-vars "cni_version=$(CNI_VERSION)" \
+		--extra-vars "containerd_version=$(CONTAINERD_VERSION)" \
     --extra-vars "kubernetes_version=$(KUBERNETES_VERSION)" \
 		deploy.yaml; \
 	result=$$?; \

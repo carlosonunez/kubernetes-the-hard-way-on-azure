@@ -7,7 +7,7 @@
 # https://cloud.google.com/vpc/docs/vpc#subnet-ranges
 - name: Create a virtual network for our Kubernetes cluster
   shell: >
-    cache_key="/cache/vnet_kthw"; \
+    cache_key="/cache/03-vnet_kthw"; \
     test -f "$cache_key" && exit 0; \
     az network vnet create -g "{{ azure_resource_group }}" -n kthw \
       --address-prefixes 10.128.0.0/9 \
@@ -16,13 +16,13 @@
 
 - name: Create the NSG for this vNet
   shell: >
-    cache_key="/cache/kthw-nsg"; \
+    cache_key="/cache/03-kthw-nsg"; \
     test -f "$cache_key" && exit 0; \
     az network nsg create -g "{{ azure_resource_group }}" -n kthw-nsg && touch "$cache_key"
 
 - name: Create NSG rules
   shell: >-
-    cache_key="/cache/nsg_$(echo "{{ item }}" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
+    cache_key="/cache/03-create_nsg_rulers-{{ item | hash('md5') }}"; \
     if test -f "$cache_key"; \
     then \
       >&2 echo "NSG rule already deployed, skipping: {{ item }}"; \
@@ -74,8 +74,8 @@
 
 - name: Create the control plane
   shell: >-
+    cache_key="/cache/03-create_control_plane-{{ item }}";
     vm_name="controller-{{ item }}"; \
-    cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     if test -f "$cache_key"; \
     then \
       >&2 echo "INFO: VM already created; skipping: $vm_name"; \
@@ -95,15 +95,15 @@
       --public-ip-address-allocation static \
       --public-ip-sku Standard \
       --size "Standard_D2s_v4" \
-      --ssh-key-values /secrets/kthw_ssh_key.pub
+      --ssh-key-values /secrets/kthw_ssh_key.pub \
       --subnet kthw-subnet \
       --vnet-name kthw && touch "$cache_key"
   with_sequence: start=0 count=3
 
 - name: Create the workers
   shell: >-
+    cache_key="/cache/03-create_worker_{{ item }}"; \
     vm_name="worker-{{ item }}"; \
-    cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
     if test -f "$cache_key"; \
     then \
       >&2 echo "INFO: VM already created; skipping: $vm_name"; \
@@ -130,8 +130,7 @@
 
 - name: Configure IP forwarding for the controllers and bind NSG to the NIC
   shell:
-    vm_name="kthw-nic-controller{{ item }}"; \
-    cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
+    cache_key="/cache/03-configure_ip_forwarding_controller_{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     az network nic update -g '{{ azure_resource_group }}' \
       --name "controller-{{ item }}VMNic" \
@@ -141,8 +140,7 @@
 
 - name: Configure IP forwarding for the workers and bind NSG to the NIC
   shell:
-    vm_name="kthw-nic-worker{{ item }}"; \
-    cache_key="/cache/$(echo "$vm_name" | md5sum | cut -f1 -d '-' | tr -dc '[a-zA-Z0-9]')"; \
+    cache_key="/cache/03-configure_ip_forwarding_worker_{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     az network nic update -g '{{ azure_resource_group }}' \
       --name "worker-{{ item }}VMNic" \
@@ -165,7 +163,7 @@
 # Yes, I'm leaving this comment in the production release of this guide.
 - name: Create a public IP for our API server
   shell:
-    cache_key="/cache/pip-api-server"; \
+    cache_key="/cache/03-pip-api-server"; \
     test -f "$cache_key" && exit 0; \
     az network public-ip create -g '{{ azure_resource_group }}' \
       --name "kubernetes-the-hard-way" \

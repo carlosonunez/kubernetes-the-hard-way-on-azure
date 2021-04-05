@@ -1,7 +1,7 @@
 ---
 - name: Install nginx
   shell:
-    cache_key="/cache/install-nginx-controllers"; \
+    cache_key="/cache/08-install-nginx-controllers"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -12,7 +12,7 @@
 
 - name: Get the Kubernetes API server public IP address
   shell: >-
-    cache_key="/cache/kubernetes_public_ip_address"; \
+    cache_key="/cache/08-kubernetes_public_ip_address"; \
     test -f "$cache_key" && { cat "$cache_key" && exit 0; }; \
     az network public-ip show -g '{{ azure_resource_group }}' \
       --name kubernetes-the-hard-way | jq -r .ipAddress | tee "$cache_key"
@@ -27,7 +27,7 @@
 
 - name: Create config directory
   shell:
-    cache_key="/cache/create_config_directory"; \
+    cache_key="/cache/08-create_config_directory"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -40,7 +40,7 @@
 
 - name: Download Kubernetes components
   shell:
-    cache_key="/cache/download_k8s_components-{{ item }}"; \
+    cache_key="/cache/08-download_k8s_components-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -57,7 +57,7 @@
 
 - name: Move components into /usr/local/bin
   shell:
-    cache_key="/cache/install_k8s_components-{{ item }}"; \
+    cache_key="/cache/08-install_k8s_components-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -74,7 +74,7 @@
 
 - name: Move key files into /var/lib/kubernetes
   shell:
-    cache_key="/cache/install_k8s_keyfiles-{{ item }}"; \
+    cache_key="/cache/08-install_k8s_keyfiles-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -94,7 +94,7 @@
 
 - name: Change the owner of the /var/lib/kubernetes folder so we can scp stuff into it
   shell:
-    cache_key="/cache/perm-var-lib-k8s"; \
+    cache_key="/cache/08-perm-var-lib-k8s"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -115,7 +115,7 @@
 
 - name: Distribute systemd units
   shell:
-    cache_key="/cache/systemd_controller-{{ item }}"; \
+    cache_key="/cache/08-systemd_controller-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -131,7 +131,7 @@
 
 - name: Move units into the right place
   shell:
-    cache_key="/cache/systemd_controller-mv-{{ item }}"; \
+    cache_key="/cache/08-systemd_controller-mv-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -147,7 +147,7 @@
 
 - name: Distribute kube-scheduler.yaml
   shell:
-    cache_key="/cache/scheduler-yaml-{{ item }}"; \
+    cache_key="/cache/08-scheduler-yaml-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -161,7 +161,7 @@
 
 - name: Move kube-scheduler.yaml into the right place
   shell:
-    cache_key="/cache/systemd_controller-mv-{{ item }}"; \
+    cache_key="/cache/08-systemd_controller-mv-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -175,7 +175,7 @@
 
 - name: Move kubeconfigs into the right place
   shell:
-    cache_key="/cache/kubeconfig-mv-{{ item }}"; \
+    cache_key="/cache/08-kubeconfig-mv-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -190,7 +190,7 @@
 
 - name: Start Kubernetes control plane
   shell:
-    cache_key="/cache/systemd_start-{{ item }}"; \
+    cache_key="/cache/08-systemd_start-{{ item }}"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -211,7 +211,7 @@
 
 - name: Copy /healthz into all controllers
   shell:
-    cache_key="/cache/copy-healthz"; \
+    cache_key="/cache/08-copy-healthz"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -222,7 +222,7 @@
 
 - name: Move /healthz into the right place
   shell:
-    cache_key="/cache/healthz-mv"; \
+    cache_key="/cache/08-healthz-mv"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -233,7 +233,7 @@
 
 - name: Enable the site and reload nginx
   shell:
-    cache_key="/cache/reload-nginx"; \
+    cache_key="/cache/08-reload-nginx"; \
     test -f "$cache_key" && exit 0; \
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
       jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
@@ -251,7 +251,7 @@
 
 - name: Copy yaml to first controller
   shell:
-    cache_key="/cache/copy-yaml"; \
+    cache_key="/cache/08-copy-yaml"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
       -n controller-0PublicIP -o json | jq -r .ipAddress);
@@ -261,7 +261,7 @@
 
 - name: Apply yaml
   shell:
-    cache_key="/cache/apply-cr-yaml"; \
+    cache_key="/cache/08-apply-cr-yaml"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
       -n controller-0PublicIP -o json | jq -r .ipAddress);
@@ -276,7 +276,7 @@
 
 - name: Copy crb yaml to first controller
   shell:
-    cache_key="/cache/copy-crb-yaml"; \
+    cache_key="/cache/08-copy-crb-yaml"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
       -n controller-0PublicIP -o json | jq -r .ipAddress);
@@ -286,7 +286,7 @@
 
 - name: Apply yaml
   shell:
-    cache_key="/cache/apply-crb-yaml"; \
+    cache_key="/cache/08-apply-crb-yaml"; \
     test -f "$cache_key" && exit 0; \
     ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
       -n controller-0PublicIP -o json | jq -r .ipAddress);
@@ -297,7 +297,7 @@
 # TODO: doc
 - name: Create the load balancer for our Kubernetes API servers
   shell:
-    cache_key="/cache/create-lb.yaml";
+    cache_key="/cache/08-create-lb.yaml";
     test -f "$cache_key" && exit 0;
     az network lb create -g '{{ azure_resource_group }}' \
       -n kubernetes \
@@ -306,7 +306,7 @@
 # TODO: doc
 - name: Create the frontend IP for the lb
   shell:
-    cache_key="/cache/create-lb-frontend-ip";
+    cache_key="/cache/08-create-lb-frontend-ip";
     test -f "$cache_key" && exit 0;
     az network lb frontend-ip create -g '{{ azure_resource_group }}' \
       --lb-name kubernetes \
@@ -321,7 +321,7 @@
 # TODO: doc
 - name: Add the health check probe
   shell:
-    cache_key="/cache/create-lb-probe.yaml";
+    cache_key="/cache/08-create-lb-probe.yaml";
     test -f "$cache_key" && exit 0;
     az network lb probe create -g '{{ azure_resource_group }}' \
       --lb-name kubernetes \
@@ -335,7 +335,7 @@
 # TODO: doc
 - name: Add NSG rule to allow Azure probing service to hit controllers in backend pool
   shell:
-    cache_key="/cache/create-lb-probe-nsg-rule.yaml";
+    cache_key="/cache/08-create-lb-probe-nsg-rule.yaml";
     test -f "$cache_key" && exit 0;
     az network nsg rule create -g '{{ azure_resource_group }}' \
       --nsg-name kthw-nsg \
@@ -353,7 +353,7 @@
 # TODO: doc
 - name: Create backend pool for load balancer and add the controllers onto it
   shell:
-    cache_key="/cache/lb-create-backend-pool"; \
+    cache_key="/cache/08-lb-create-backend-pool"; \
     test -f "$cache_key" && exit 0; \
     backend_commands=""; \
     idx=0; \
@@ -372,7 +372,7 @@
 # TODO: doc
 - name: "Bind the public IP to the backend pool at port 6443"
   shell:
-    cache_key="/cache/create-lb-rule.yaml";
+    cache_key="/cache/08-create-lb-rule.yaml";
     test -f "$cache_key" && exit 0;
     az network lb rule create -g '{{ azure_resource_group }}' \
       --lb kubernetes \

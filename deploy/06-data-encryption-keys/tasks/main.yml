@@ -1,7 +1,7 @@
 ---
 - name: Create encryption key
   shell: >-
-    cache_key="/cache/enc_key";
+    cache_key="/cache/06-enc_key";
     if test -f "$cache_key";
     then cat "$cache_key";
     else
@@ -19,7 +19,7 @@
 
 - name: Copy encryption manifest to controllers
   shell: 
-    cache_key="/cache/scp-encryption-key-kubeconfig-{{ item }}"; \
+    cache_key="/cache/06-scp-encryption-key-kubeconfig-{{ item }}"; \
     if test -f "$cache_key";
     then return 0;
     fi;

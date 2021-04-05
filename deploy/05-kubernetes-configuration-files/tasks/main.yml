@@ -11,7 +11,7 @@
       --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
     kubectl config set-credentials "system:node:$instance_name" \
       --client-certificate="/secrets/${instance_name}.pem" \
-      --client-key="/secrets/${instance_key}.pem" \
+      --client-key="/secrets/${instance_name}-key.pem" \
       --embed-certs=true \
       --kubeconfig="/kubeconfigs/${instance_name}.kubeconfig";
     kubectl config set-context default \
@@ -32,7 +32,7 @@
       --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig";
     kubectl config set-credentials "system:kube-proxy" \
       --client-certificate="/secrets/kube-proxy.pem" \
-      --client-key="/secrets/kube-proxy-key}.pem" \
+      --client-key="/secrets/kube-proxy-key.pem" \
       --embed-certs=true \
       --kubeconfig="/kubeconfigs/kube-proxy.kubeconfig";
     kubectl config set-context default \
@@ -66,7 +66,7 @@
 
 - name: Copy kubeconfigs to controllers
   shell: 
-    cache_key="/cache/scp-controller-kubeconfig-{{ item }}"; \
+    cache_key="/cache/05-scp-controller-kubeconfig-{{ item }}"; \
     if test -f "$cache_key";
     then return 0;
     fi;
@@ -88,7 +88,7 @@
 
 - name: Copy kubeconfigs to workers
   shell: 
-    cache_key="/cache/scp-worker-kubeconfig-{{ item }}"; \
+    cache_key="/cache/05-scp-worker-kubeconfig-{{ item }}"; \
     if test -f "$cache_key";
     then return 0;
     fi;

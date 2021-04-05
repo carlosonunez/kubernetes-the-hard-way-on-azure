@@ -1,0 +1,361 @@
+---
+- set_fact:
+    crictl_url: "https://github.com/kubernetes-sigs/cri-tools/releases/download/v{{ crictl_version }}/crictl-v{{ crictl_version }}-linux-amd64.tar.gz"
+    runc_url: "https://github.com/opencontainers/runc/releases/download/v{{ runc_version }}/runc.amd64"
+    cni_url: "https://github.com/containernetworking/plugins/releases/download/v{{ cni_version }}/cni-plugins-linux-amd64-v{{ cni_version }}.tgz"
+    containerd_url: "https://github.com/containerd/containerd/releases/download/v{{ containerd_version }}/containerd-{{ containerd_version }}-linux-amd64.tar.gz"
+    kubectl_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kubectl"
+    kube_proxy_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kube-proxy"
+    kubelet_url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubernetes_version }}/bin/linux/amd64/kubelet"
+
+- name: Install jq
+  shell:
+    cache_key="/cache/09-install_jq_worker"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" "sudo apt -y update && sudo apt -y install jq";
+    done && touch "$cache_key"
+  register: result
+
+- name: Install core networking binaries
+  shell:
+    cache_key="/cache/09-install-net-utilities"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      sudo apt -y install socat ipset conntrack;
+    done && touch "$cache_key"
+
+- name: Create installation directories
+  shell:
+    cache_key="/cache/09-create-install-dirs"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo mkdir -p /etc/cni/net.d
+        /opt/cni/bin
+        /var/lib/kubelet
+        /var/run/kube-proxy
+        /var/lib/kubernetes
+        /var/run/kubernetes';
+    done && touch "$cache_key"
+  register: result
+
+- debug:
+    msg: "result: {{ result }}"
+
+- name: Download worker binaries
+  shell:
+    cache_key="/cache/09-download-worker-binaries"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'wget --timestamping "{{ crictl_url }}" 
+         "{{ runc_url }}" 
+         "{{ cni_url }}" 
+         "{{ containerd_url }}" 
+         "{{ kubectl_url }}" 
+         "{{ kube_proxy_url }}" 
+         "{{ kubelet_url }}"';
+    done && touch "$cache_key"
+
+- name: Install containerd to /bin
+  shell:
+    cache_key="/cache/09-install_containerd"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'mkdir containerd &&
+        tar -xvf "{{ containerd_url.split("/")[-1] }}" -C containerd &&
+        sudo mv containerd/bin/* /bin/';
+    done && touch "$cache_key"
+
+- name: Install runc, crictl and kube components to /usr/local/bin
+  shell:
+    cache_key="/cache/09-install_kube_stuff"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'tar -xvf "{{ crictl_url.split("/")[-1] }}" &&
+       sudo mv runc.amd64 runc &&
+       chmod +x crictl kubectl kube-proxy kubelet runc &&
+       sudo mv crictl kubectl kube-proxy kubelet runc /usr/local/bin/';
+    done && touch "$cache_key"
+
+- name: Install the cni plugins into /opt/cni/bin
+  shell:
+    cache_key="/cache/09-install_cni_plugins"; \
+    test -f "$cache_key" && exit 0; \
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo tar -xvf "{{ cni_url.split("/")[-1] }}" -C /opt/cni/bin';
+    done && touch "$cache_key"
+
+- name: Create the bridge network configuration for the CNI
+  copy:
+    dest: "/secrets/10-bridge.conf.{{ item }}"
+    content: "{{ lookup('template', '10-bridge.conf') }}"
+  with_sequence: start=0 count=2
+
+- name: Create the loopback network configuration for the CNI
+  copy:
+    dest: "/secrets/99-loopback.conf"
+    content: "{{ lookup('template', '99-loopback.conf') }}"
+
+- name: Distribute CNI configurations
+  shell:
+    cache_key="/cache/09-cni-config"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      for file in "10-bridge.conf.$idx" "99-loopback.conf"; \
+      do \
+        scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+          -o StrictHostKeyChecking=no \
+          "/secrets/$file" \
+          "ubuntu@$ip_address:/tmp";
+      done;
+    done && touch "$cache_key"
+  register: result
+
+- name: Move CNI configurations to the right place
+  shell:
+    cache_key="/cache/09-cni-config-move"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "mv /tmp/10-bridge.conf.$idx /tmp/10-bridge.conf && sudo mv /tmp/*.conf /etc/cni/net.d/";
+    done && touch "$cache_key"
+  register: result
+
+- name: Create the containerd config
+  copy:
+    dest: "/secrets/containerd-config.toml"
+    content: "{{ lookup('file', 'containerd-config.toml') }}"
+
+- name: Distribute the containerd config
+  shell:
+    cache_key="/cache/09-containerd-config"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=no \
+        "/secrets/containerd-config.toml" \
+        "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+
+- name: Move containerd configurations to the right place
+  shell:
+    cache_key="/cache/09-containerd-config-move"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "sudo mkdir -p /etc/containerd && sudo mv /tmp/containerd-config.toml /etc/containerd/config.toml";
+    done && touch "$cache_key"
+  register: result
+
+- name: Create the containerd service
+  copy:
+    dest: "/secrets/containerd.service"
+    content: "{{ lookup('file', 'containerd.service') }}"
+
+- name: Distribute the containerd service
+  shell:
+    cache_key="/cache/09-containerd-service"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=no \
+        "/secrets/containerd.service" \
+        "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+
+- name: Move containerd configurations to the right place
+  shell:
+    cache_key="/cache/09-containerd-service-move"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "sudo mv /tmp/containerd.service /etc/systemd/system/containerd.service";
+    done && touch "$cache_key"
+  register: result
+
+- name: Create the kube-proxy config
+  copy:
+    dest: "/secrets/kube-proxy-config.yaml"
+    content: "{{ lookup('file', 'kube-proxy-config.yaml') }}"
+
+- name: Create the kubelet config
+  copy:
+    dest: "/secrets/kubelet-config-{{ item }}.yaml"
+    content: "{{ lookup('template', 'kubelet-config.yaml') }}"
+  with_sequence: start=0 count=2
+
+- name: Distribute the configs
+  shell:
+    cache_key="/cache/09-kubelet-and-kube-proxy-config-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=no \
+        "/secrets/{{ item }}" \
+        "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kubelet-config-0.yaml
+    - kubelet-config-1.yaml
+    - kube-proxy-config.yaml
+
+# I couldn't do it in one command; kept getting 'sudo: command not found' because
+# part of the command would run in the container. VERY frustrating. Took the easier
+# route and broke them apart.
+- name: Move worker-specific certificates and the CA to their correct places
+  shell:
+    cache_key="/cache/09-worker-certs-files-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo mv worker-{{ item }}.pem worker-{{ item }}-key.pem /var/lib/kubelet/;
+       sudo mv ca.pem /var/lib/kubernetes/' && touch "$cache_key"
+  register: result
+  with_sequence: start=0 count=2
+
+- name: Move worker-specific kubeconfigs to their correct places
+  shell:
+    cache_key="/cache/09-worker-kubeconfigs-files-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+       'sudo mv worker-{{ item }}.kubeconfig /var/lib/kubelet/kubeconfig;
+       sudo mv /tmp/kubelet-config-{{ item }}.yaml /var/lib/kubelet/kubelet-config.yaml;' \
+        && touch "$cache_key"
+  register: result
+  with_sequence: start=0 count=2
+
+- name: Move kube-proxy configs to the right place
+  shell:
+    cache_key="/cache/09-kube-proxy-move-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo mkdir -p /var/lib/kube-proxy; sudo mv /tmp/kube-proxy-config.yaml /var/lib/kube-proxy/' && touch "$cache_key"
+  register: result
+  with_sequence: start=0 count=2
+
+- name: Move kube-proxy kubeconfig to the right place
+  shell:
+    cache_key="/cache/09-kube-proxy-config-move"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "sudo mv kube-proxy.kubeconfig /var/lib/kube-proxy/kubeconfig";
+    done && touch "$cache_key"
+  register: result
+
+- name: Create the kubelet and kube-proxy service
+  copy:
+    dest: "/secrets/{{ item }}"
+    content: "{{ lookup('file', item) }}"
+  with_items:
+    - kubelet.service
+    - kube-proxy.service
+
+- name: Distribute the kubelet service
+  shell:
+    cache_key="/cache/09-kubelet-service-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=no \
+        "/secrets/{{ item }}" \
+        "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kubelet.service
+    - kube-proxy.service
+
+- name: Move kubelet configurations to the right place
+  shell:
+    cache_key="/cache/09-kubelet-service-move-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "sudo mv /tmp/{{ item }} /etc/systemd/system/{{ item }}";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kubelet.service
+    - kube-proxy.service
+
+- name: Start containerd kubelet and kube-proxy
+  shell:
+    cache_key="/cache/09-kubelet-service-start"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        'sudo systemctl daemon-reload; sudo systemctl enable containerd kube-proxy kubelet; sudo systemctl start containerd kubelet kube-proxy';
+    done && touch "$cache_key"
+  register: result
+
