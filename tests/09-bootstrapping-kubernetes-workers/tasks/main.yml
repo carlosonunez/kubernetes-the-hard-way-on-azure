@@ -111,3 +111,67 @@
 - fail:
     msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
   when: diff | length > 0 
+
+- name: Ensure containerd uses runc for the runtime
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'printf "$(hostname): "; grep runtime_engine /etc/containerd/config.toml | sed "s/.*= //"';
+    done
+  register: result
+
+- set_fact:
+    want:
+      - 'worker-0: "/usr/local/bin/runc"'
+      - 'worker-1: "/usr/local/bin/runc"'
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0 
+
+- name: Ensure kubelet and kube-proxy files are in the right places
+  shell: >-
+    for idx in $(seq 0 1);
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        -n "worker-${idx}PublicIP" --query 'ipAddress' -o tsv); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      "for file in \
+          /var/lib/kubelet/worker-${idx}.pem \
+          /var/lib/kubelet/worker-${idx}-key.pem \
+          /var/lib/kubelet/kubeconfig \
+          /var/lib/kubernetes/ca.pem \
+          /etc/systemd/system/containerd.service; \
+        do test -e \"\$file\" && echo \"\$(hostname): \$file\"; \
+        done";
+    done
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - "worker-0: /var/lib/kubelet/worker-0.pem"
+      - "worker-0: /var/lib/kubelet/worker-0-key.pem"
+      - "worker-0: /var/lib/kubelet/kubeconfig"
+      - "worker-0: /var/lib/kubernetes/ca.pem"
+      - "worker-0: /etc/systemd/system/containerd.service"
+      - "worker-1: /var/lib/kubelet/worker-1.pem"
+      - "worker-1: /var/lib/kubelet/worker-1-key.pem"
+      - "worker-1: /var/lib/kubelet/kubeconfig"
+      - "worker-1: /var/lib/kubernetes/ca.pem"
+      - "worker-1: /etc/systemd/system/containerd.service"
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}, errors: {{ result.stderr }}"
+  when: diff | length > 0 

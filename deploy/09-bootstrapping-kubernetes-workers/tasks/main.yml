@@ -143,3 +143,88 @@
         "mv /tmp/10-bridge.conf.$idx /tmp/10-bridge.conf && sudo mv /tmp/*.conf /etc/cni/net.d/";
     done && touch "$cache_key"
   register: result
+
+- name: Create the containerd config
+  copy:
+    dest: "/secrets/containerd-config.toml"
+    content: "{{ lookup('file', 'containerd-config.toml') }}"
+
+- name: Distribute the containerd config
+  shell:
+    cache_key="/cache/containerd-config"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=no \
+        "/secrets/containerd-config.toml" \
+        "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+
+- name: Move containerd configurations to the right place
+  shell:
+    cache_key="/cache/containerd-config-move"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "sudo mkdir -p /etc/containerd && sudo mv /tmp/containerd-config.toml /etc/containerd/config.toml";
+    done && touch "$cache_key"
+  register: result
+
+- name: Create the containerd service
+  copy:
+    dest: "/secrets/containerd.service"
+    content: "{{ lookup('file', 'containerd.service') }}"
+
+- name: Distribute the containerd service
+  shell:
+    cache_key="/cache/containerd-service"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=no \
+        "/secrets/containerd.service" \
+        "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+
+- name: Move containerd configurations to the right place
+  shell:
+    cache_key="/cache/containerd-service-move"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "sudo mv /tmp/containerd.service /etc/systemd/system/containerd.service";
+    done && touch "$cache_key"
+  register: result
+
+- name: Move kubelet and kube-proxy files to the right place
+  shell:
+    cache_key="/cache/kubelet-kube-proxy-move"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address" \
+        "sudo mv worker-${idx}-key.pem worker-${idx}.pem /var/lib/kubelet;
+         sudo mv worker-${idx}.kubeconfig /var/lib/kubelet/kubeconfig;
+         sudo mv ca.pem /var/lib/kubernetes";
+    done && touch "$cache_key"
+  register: result
+
