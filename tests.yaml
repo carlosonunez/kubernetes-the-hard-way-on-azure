@@ -6,13 +6,15 @@
   vars:
     ansible_python_interpreter: "/usr/bin/env python"
   roles:
-   - 00-test-machine-works
-   - 01-prerequisites
-   - 02-client-tools
-   - 03-provision-compute-resources
-   - 04-provisioning-ca-and-tls-certificates
-   - 05-kubernetes-configuration-files
-   - 06-data-encryption-keys
-   - 07-bootstrapping-etcd
-   - 08-bootstrapping-kubernetes
-   - 09-bootstrapping-kubernetes-workers
+#   - 00-test-machine-works
+#   - 01-prerequisites
+#   - 02-client-tools
+#   - 03-provision-compute-resources
+#   - 04-provisioning-ca-and-tls-certificates
+#   - 05-kubernetes-configuration-files
+#   - 06-data-encryption-keys
+#   - 07-bootstrapping-etcd
+#   - 08-bootstrapping-kubernetes
+#   - 09-bootstrapping-kubernetes-workers
+#   - 10-configuring-kubectl
+   - 11-pod-network-routes
