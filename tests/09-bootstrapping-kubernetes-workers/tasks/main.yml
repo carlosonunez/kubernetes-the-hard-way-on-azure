@@ -191,11 +191,12 @@
 - name: Ensure containerd kubelet kube-proxy services have started
   shell: >-
     for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
-      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+      jq -r '.[] | select(.name |contains("worker")) | .ipAddress');
     do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
       "ubuntu@$ip_address" 'systemctl is-active --quiet containerd kubelet kube-proxy';
     done
   register: result
+  ignore_errors:
 
 - set_fact:
     want: "0"
