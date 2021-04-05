@@ -148,7 +148,11 @@
           /var/lib/kubelet/worker-${idx}-key.pem \
           /var/lib/kubelet/kubeconfig \
           /var/lib/kubernetes/ca.pem \
-          /etc/systemd/system/containerd.service; \
+          /var/lib/kubelet/kubelet-config.yaml \
+          /var/lib/kube-proxy/kube-proxy-config.yaml \
+          /etc/systemd/system/containerd.service \
+          /etc/systemd/system/kubelet.service \
+          /etc/systemd/system/kube-proxy.service; \
         do test -e \"\$file\" && echo \"\$(hostname): \$file\"; \
         done";
     done
@@ -157,16 +161,24 @@
 
 - set_fact:
     want:
-      - "worker-0: /var/lib/kubelet/worker-0.pem"
-      - "worker-0: /var/lib/kubelet/worker-0-key.pem"
-      - "worker-0: /var/lib/kubelet/kubeconfig"
-      - "worker-0: /var/lib/kubernetes/ca.pem"
       - "worker-0: /etc/systemd/system/containerd.service"
-      - "worker-1: /var/lib/kubelet/worker-1.pem"
-      - "worker-1: /var/lib/kubelet/worker-1-key.pem"
-      - "worker-1: /var/lib/kubelet/kubeconfig"
-      - "worker-1: /var/lib/kubernetes/ca.pem"
+      - "worker-0: /etc/systemd/system/kube-proxy.service"
+      - "worker-0: /etc/systemd/system/kubelet.service"
+      - "worker-0: /var/lib/kube-proxy/kube-proxy-config.yaml"
+      - "worker-0: /var/lib/kubelet/kubeconfig"
+      - "worker-0: /var/lib/kubelet/kubelet-config.yaml"
+      - "worker-0: /var/lib/kubelet/worker-0-key.pem"
+      - "worker-0: /var/lib/kubelet/worker-0.pem"
+      - "worker-0: /var/lib/kubernetes/ca.pem"
       - "worker-1: /etc/systemd/system/containerd.service"
+      - "worker-1: /etc/systemd/system/kube-proxy.service"
+      - "worker-1: /etc/systemd/system/kubelet.service"
+      - "worker-1: /var/lib/kube-proxy/kube-proxy-config.yaml"
+      - "worker-1: /var/lib/kubelet/kubeconfig"
+      - "worker-1: /var/lib/kubelet/kubelet-config.yaml"
+      - "worker-1: /var/lib/kubelet/worker-1-key.pem"
+      - "worker-1: /var/lib/kubelet/worker-1.pem"
+      - "worker-1: /var/lib/kubernetes/ca.pem"
     got: "{{ result.stdout_lines | unique }}"
 
 - set_fact:
@@ -175,3 +187,20 @@
 - fail:
     msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}, errors: {{ result.stderr }}"
   when: diff | length > 0 
+
+- name: Ensure containerd kubelet kube-proxy services have started
+  shell: >-
+    for ip_address in $(az network public-ip list -g '{{ azure_resource_group }}' | \
+      jq -r '.[] | select(.name |contains("controller")) | .ipAddress');
+    do ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" 'systemctl is-active --quiet containerd kubelet kube-proxy';
+    done
+  register: result
+
+- set_fact:
+    want: "0"
+    got: "{{ result.rc }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, output: {{ result.stdout_lines }}"
+  when: want != got

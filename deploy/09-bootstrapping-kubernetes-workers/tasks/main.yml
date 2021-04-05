@@ -212,19 +212,135 @@
     done && touch "$cache_key"
   register: result
 
-- name: Move kubelet and kube-proxy files to the right place
+- name: Create the kube-proxy config
+  copy:
+    dest: "/secrets/kube-proxy-config.yaml"
+    content: "{{ lookup('file', 'kube-proxy-config.yaml') }}"
+
+- name: Create the kubelet config
+  copy:
+    dest: "/secrets/kubelet-config-{{ item }}.yaml"
+    content: "{{ lookup('template', 'kubelet-config.yaml') }}"
+  with_sequence: start=0 count=2
+
+- name: Distribute the configs
   shell:
-    cache_key="/cache/kubelet-kube-proxy-move"; \
+    cache_key="/cache/kubelet-and-kube-proxy-config-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=no \
+        "/secrets/{{ item }}" \
+        "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kubelet-config-0.yaml
+    - kubelet-config-1.yaml
+    - kube-proxy-config.yaml
+
+# I couldn't do it in one command; kept getting 'sudo: command not found' because
+# part of the command would run in the container. VERY frustrating. Took the easier
+# route and broke them apart.
+- name: Move worker-specific files to their correct places
+  shell:
+    cache_key="/cache/worker-specific-files-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo mv /tmp/kubelet-config-{{ item }}.yaml
+        worker-{{ item }}.pem
+        worker-{{ item }}-key.pem /var/lib/kubelet/;
+       sudo mv worker-{{ item }}.kubeconfig /var/lib/kubelet/kubeconfig;
+       sudo mv ca.pem /var/lib/kubernetes/' && touch "$cache_key"
+  register: result
+  with_sequence: start=0 count=2
+
+- name: Move kube-proxy configs to the right place
+  shell:
+    cache_key="/cache/kube-proxy-move-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        --name "worker-{{ item }}PublicIP" | jq -r .ipAddress); \
+    ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+      "ubuntu@$ip_address" \
+      'sudo mkdir -p /var/lib/kube-proxy; sudo mv /tmp/kube-proxy-config.yaml /var/lib/kube-proxy/' && touch "$cache_key"
+  register: result
+  with_sequence: start=0 count=2
+
+- name: Move kube-proxy kubeconfig to the right place
+  shell:
+    cache_key="/cache/kube-proxy-config-move"; \
     test -f "$cache_key" && exit 0; \
     for idx in $(seq 0 1); \
     do \
       ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
           --name worker-${idx}PublicIP | jq -r .ipAddress); \
       ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
-        "ubuntu@$ip_address" \
-        "sudo mv worker-${idx}-key.pem worker-${idx}.pem /var/lib/kubelet;
-         sudo mv worker-${idx}.kubeconfig /var/lib/kubelet/kubeconfig;
-         sudo mv ca.pem /var/lib/kubernetes";
+        "ubuntu@$ip_address"
+        "sudo mv kube-proxy.kubeconfig /var/lib/kube-proxy/kubeconfig";
+    done && touch "$cache_key"
+  register: result
+
+- name: Create the kubelet and kube-proxy service
+  copy:
+    dest: "/secrets/{{ item }}"
+    content: "{{ lookup('file', item) }}"
+  with_items:
+    - kubelet.service
+    - kube-proxy.service
+
+- name: Distribute the kubelet service
+  shell:
+    cache_key="/cache/kubelet-service-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      scp -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null \
+        -o StrictHostKeyChecking=no \
+        "/secrets/{{ item }}" \
+        "ubuntu@$ip_address:/tmp";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kubelet.service
+    - kube-proxy.service
+
+- name: Move kubelet configurations to the right place
+  shell:
+    cache_key="/cache/kubelet-service-move-{{ item }}"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        "sudo mv /tmp/{{ item }} /etc/systemd/system/{{ item }}";
+    done && touch "$cache_key"
+  register: result
+  with_items:
+    - kubelet.service
+    - kube-proxy.service
+
+- name: Start containerd kubelet and kube-proxy
+  shell:
+    cache_key="/cache/kubelet-service-start"; \
+    test -f "$cache_key" && exit 0; \
+    for idx in $(seq 0 1); \
+    do \
+      ip_address=$(az network public-ip show -g '{{ azure_resource_group }}' \
+          --name worker-${idx}PublicIP | jq -r .ipAddress); \
+      ssh -i /secrets/kthw_ssh_key -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        "ubuntu@$ip_address"
+        'sudo systemctl daemon-reload; sudo systemctl enable containerd kube-proxy kubelet; sudo systemctl start containerd kubelet kube-proxy';
     done && touch "$cache_key"
   register: result
 
