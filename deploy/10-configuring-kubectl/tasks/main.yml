@@ -1,0 +1,16 @@
+---
+- name: Create a kubeconfig for our cluster
+  shell: >-
+      KUBERNETES_PUBLIC_ADDRESS=$(az network public-ip show -g '{{ azure_resource_group }}' \
+        -n 'kubernetes-the-hard-way' --query 'ipAddress' -o tsv);
+      kubectl config set-cluster kubernetes-the-hard-way \
+        --certificate-authority=/secrets/ca.pem \
+        --embed-certs=true \
+        --server=https://${KUBERNETES_PUBLIC_ADDRESS}:6443;
+      kubectl config set-credentials admin \
+        --client-certificate=/secrets/admin.pem \
+        --client-key=/secrets/admin-key.pem;
+      kubectl config set-context kubernetes-the-hard-way \
+        --cluster=kubernetes-the-hard-way \
+        --user=admin;
+      kubectl config use-context kubernetes-the-hard-way

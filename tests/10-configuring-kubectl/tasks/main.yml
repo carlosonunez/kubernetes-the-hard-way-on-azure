@@ -1,0 +1,41 @@
+---
+- name: Confirm that we can see cluster health locally
+  shell: kubectl get componentstatuses -o json | \
+    jq -r '.items[] | .metadata.name + ", " + .conditions[0].message'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - "scheduler, ok"
+      - "controller-manager, ok"
+      - 'etcd-0, {"health":"true"}'
+      - 'etcd-1, {"health":"true"}'
+      - 'etcd-2, {"health":"true"}'
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0
+
+- name: Ensure that we can see nodes
+  shell: kubectl get nodes | grep -E "worker-[0-9] +Ready" | sed "s/ \+Ready.*//"
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - worker-0
+      - worker-1
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0 
+
