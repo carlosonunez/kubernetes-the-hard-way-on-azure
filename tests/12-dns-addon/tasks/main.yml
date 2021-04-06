@@ -19,21 +19,23 @@
 
   when: diff | length > 0
 - name: Confirm that DNS within the cluster works
-  shell: kubectl run busybox --attach --rm --image=busybox:1.28 --command -- nslookup kubernetes
+  shell: >-
+    kubectl run alpine --image=alpine --command -- sleep 5000 &>/dev/null;
+    kubectl exec alpine -- nslookup kubernetes 2>&1;
+    kubectl delete pod alpine -f --grace-period=0;
   register: result
   ignore_errors: true
 
 - set_fact:
     want:
-      - "Server:    10.32.0.10"
-      - "Address 1: 10.32.0.10 kube-dns.kube-system.svc.cluster.local"
-      - "Name:      kubernetes"
-      - "Address 1: 10.32.0.1 kubernetes.default.svc.cluster.local"
+      - "Server:\t\t10.32.0.10"
+      - "Name:\tkubernetes.default.svc.cluster.local"
+      - "Address: 10.32.0.1"
     got: "{{ result.stdout_lines | unique }}"
 
 - set_fact:
     diff: "{{ want | difference(got) }}"
 
 - fail:
-    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}, out: {{ result.stdout }}"
   when: diff | length > 0
