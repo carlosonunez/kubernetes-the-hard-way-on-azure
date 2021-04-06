@@ -8,7 +8,6 @@
 
 - set_fact:
     want:
-      - "default-route-VNetLocal: 10.240.0.0/16 -->  VnetLocal"
       - "kubernetes-route-10-200-0-0-24: 10.200.0.0/24 --> 10.240.0.20 VirtualAppliance"
       - "kubernetes-route-10-200-1-0-24: 10.200.1.0/24 --> 10.240.0.21 VirtualAppliance"
     got: "{{ result.stdout_lines | unique }}"

@@ -1,10 +1,17 @@
 ---
 - name: Create a route table for pod to kubelet traffic
-  shell: \
+  shell: >-
     cache_key="/cache/11-route-table";
     test -f "$cache_key" && exit 0;
     az network route-table create -g '{{ azure_resource_group }}' -n kthw-route-table && \
       touch "$cache_key"
+
+- name: Associate the route table with our subnet
+  shell: >-
+    cache_key="/cache/11-route-table-associate";
+    test -f "$cache_key" && exit 0;
+    az network vnet subnet update -g '{{ azure_resource_group }}' -n kthw-subnet \
+      --vnet-name kthw --route-table kthw-route-table && touch "$cache_key"
 
 - name: Add routes linking pods to node
   shell: >-
@@ -18,19 +25,4 @@
         --next-hop-type VirtualAppliance \
         --next-hop-ip-address "10.240.0.2${idx}" \
         --address-prefix "10.200.${idx}.0/24" && touch "$cache_key"
-    done
-
-- name: Add default routes
-  shell: >-
-    for route in "10.240.0.0/16:VNetLocal" "0.0.0.0/0:Internet";
-    do \
-      cidr=$(echo "$route" | cut -f1 -d ':');
-      dest=$(echo "$route" | cut -f2 -d ':');
-      cache_key="/cache/11-route-add-default-$dest";
-      test -f "$cache_key" && exit 0;
-      az network route-table route create -g '{{ azure_resource_group }}' \
-        --name default-route-$dest \
-        --route-table-name kthw-route-table \
-        --next-hop-type "$dest" \
-        --address-prefix "$cidr" && touch "$cache_key";
     done

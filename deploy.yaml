@@ -9,10 +9,11 @@
 #   - 01-prerequisites
 #   - 03-provision-compute-resources
 #   - 04-provisioning-ca-and-tls-certificates
-#   - 05-kubernetes-configuration-files
+#    - 05-kubernetes-configuration-files
 #   - 06-data-encryption-keys
 #   - 07-bootstrapping-etcd
 #   - 08-bootstrapping-kubernetes
 #   - 09-bootstrapping-kubernetes-workers
 #   - 10-configuring-kubectl
-   - 11-pod-network-routes
+#   - 11-pod-network-routes
+    - 12-dns-addon

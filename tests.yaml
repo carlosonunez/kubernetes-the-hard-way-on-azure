@@ -17,4 +17,5 @@
 #   - 08-bootstrapping-kubernetes
 #   - 09-bootstrapping-kubernetes-workers
 #   - 10-configuring-kubectl
-   - 11-pod-network-routes
+#   - 11-pod-network-routes
+    - 12-dns-addon

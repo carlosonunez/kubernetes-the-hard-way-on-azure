@@ -1,0 +1,39 @@
+---
+- name: Confirm that CoreDNS pods are running
+  shell: kubectl get deployment -l k8s-app=kube-dns -n kube-system -o json | \
+    jq -r '.items[].metadata.name'
+  register: result
+  ignore_errors: true
+  delay: 3
+
+- set_fact:
+    want:
+      - "coredns"
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+
+  when: diff | length > 0
+- name: Confirm that DNS within the cluster works
+  shell: kubectl run busybox --attach --rm --image=busybox:1.28 --command -- nslookup kubernetes
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want:
+      - "Server:    10.32.0.10"
+      - "Address 1: 10.32.0.10 kube-dns.kube-system.svc.cluster.local"
+      - "Name:      kubernetes"
+      - "Address 1: 10.32.0.1 kubernetes.default.svc.cluster.local"
+    got: "{{ result.stdout_lines | unique }}"
+
+- set_fact:
+    diff: "{{ want | difference(got) }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, diff: {{ diff }}"
+  when: diff | length > 0

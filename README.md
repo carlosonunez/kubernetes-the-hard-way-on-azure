@@ -27,6 +27,10 @@ The lab documentation from the [original codebase](https://github.com/kelseyhigh
 have not been copied over here. You should have them open in a separate browser along with this
 reference. To see Azure-specific differences, check out the "deltas" [here](./deltas).
 
+## Having Trouble?
+
+Check out [the troubleshooting guide](./99-troubleshooting.md).
+
 ## Here Be Dragons!
 
 This codebase roughly describes the effort required to spin up Kubernetes from scratch on Azure
