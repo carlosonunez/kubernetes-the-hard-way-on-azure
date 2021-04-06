@@ -1,0 +1,33 @@
+---
+- name: Create nginx deployment
+  shell: kubectl create deployment nginx --image=nginx
+  register: result
+  failed_when: result.rc != 0 and 'AlreadyExists' not in result.stderr
+
+- name: Wait for pods to become ready
+  shell: kubectl get pods | grep nginx | grep Running
+  register: result
+  until: result.rc == 0
+  retries: 15
+  delay: 1
+
+- name: Expose nginx to a node port
+  shell: kubectl expose deployment nginx --port 80 --type NodePort
+  register: result
+  failed_when: result.rc != 0 and 'AlreadyExists' not in result.stderr
+
+- name: Add a NSG rule to make it accessible
+  shell: >-
+    node_port=$(kubectl get svc nginx \
+      --output=jsonpath='{range .spec.ports[0]}{.nodePort}');
+    cache_key="/cache/13-expose-nginx";
+    test -f "$cache_key" && exit 0;
+    az network nsg rule create -g '{{ azure_resource_group }}' \
+      --nsg-name kthw-nsg \
+      --name "allow_into_node_port" \
+      --priority "130" \
+      --access Allow \
+      --source-address-prefixes "*" \
+      --protocol tcp \
+      --destination-address-prefixes "*" \
+      --destination-port-ranges "$node_port" && touch "$cache_key"
