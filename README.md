@@ -56,3 +56,5 @@ reference. To see Azure-specific differences, check out the "deltas" [here](./de
 - [Bootstrapping the Kubernetes Control Plane](./deltas/08-bootstrapping-kubernetes.md)
 - [Bootstrap Kubernetes Workers](./deltas/09-bootstrapping-kubernetes-workers.md)
 - [Provisioning Pod Network Routes](./deltas/11-pod-network-routes.md)
+- [Smoke Test](./deltas/13-smoke-test.md)
+- [Cleaning Up](./deltas/14-cleanup.md)
