@@ -1,0 +1,82 @@
+---
+- name: Confirm that secrets are encrypted in etcd
+  shell:
+    kubectl create secret generic kubernetes-the-hard-way --from-literal="mykey=mydata";
+    ip=$(az network public-ip show -g '{{ azure_resource_group }}' -n "controller-0PublicIP" --query 'ipAddress' -o tsv);
+    ssh -i /secrets/kthw_ssh_key \
+      -o UserKnownHostsFile=/dev/null \
+      -o StrictHostKeyChecking=no \
+      "ubuntu@$ip" \
+      'sudo ETCDCTL_API=3 etcdctl get
+        --endpoints=https://127.0.0.1:2379
+        --cacert=/etc/etcd/ca.pem
+        --cert=/etc/etcd/kubernetes.pem
+        --key=/etc/etcd/kubernetes-key.pem
+        /registry/secrets/default/kubernetes-the-hard-way 2>&1'
+  register: result
+  ignore_errors: true
+
+- set_fact:
+    want: true
+    got: "{{ 'aescbc' in result.stdout }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, out: {{ result.stdout }}"
+  when: want != got
+
+- name: Create nginx deployment
+  shell: >-
+    kubectl create deployment nginx --image=nginx;
+  ignore_errors: true
+
+- name: Confirm port-forwarding works
+  shell: >-
+    { kubectl port-forward deployments/nginx "8080{{ ':' }}80"; } &
+    curl --head http://localhost:8080
+  register: result
+  until: result.rc == 0
+  retries: 3
+  delay: 1
+
+- set_fact:
+    want: true
+    got: "{{ 'HTTP/1.1 200 OK' in result.stdout }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, out: {{ result.stdout }}"
+  when: want != got
+
+- name: Verify logs
+  shell: kubectl logs -l app=nginx
+  register: result
+  until: result.rc == 0
+  retries: 3
+  delay: 1
+
+- set_fact:
+    want: true
+    got: "{{ 'HEAD / HTTP/1.1' in result.stdout }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, out: {{ result.stdout }}"
+  when: want != got
+
+- name: Verify nginx is accessible from the node port
+  shell: >-
+    ip=$(az network public-ip show -g '{{ azure_resource_group }}' \
+      -n 'worker-0PublicIP' --query 'ipAddress' -o tsv);
+    node_port=$(kubectl get svc nginx \
+      --output=jsonpath='{range .spec.ports[0]}{.nodePort}');
+    curl --head "http://${ip}:${node_port}"
+  register: result
+  until: result.rc == 0
+  retries: 3
+  delay: 1
+
+- set_fact:
+    want: true
+    got: "{{ 'HTTP/1.1 200 OK' in result.stdout }}"
+
+- fail:
+    msg: "want {{ want }}, got {{ got }}, out: {{ result.stdout }}"
+  when: want != got
