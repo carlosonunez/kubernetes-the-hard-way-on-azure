@@ -82,20 +82,20 @@
       external_ip=$(cat "/cache/04-external-ip-{{ item }}"); \
     else \
       internal_ip=$(\
-        az network nic show -n "worker-{{ item }}VMNic" -g '{{ azure_resource_group }}' | \
-        jq -r .ipConfigurations.privateIpAddress); \
+        az network nic show -n "worker-{{ item }}VMNic" -g '{{ azure_resource_group }}' \
+           --query 'ipConfigurations[0].privateIpAddress' -o tsv); \
       external_ip=$(\
-        az network nic show -n "worker-{{ item }}PublicIP" -g '{{ azure_resource_group }}' | \
-        jq -r .ipAddress); \
+        az network public-ip show -n "worker-{{ item }}PublicIP" -g '{{ azure_resource_group }}' \
+          --query 'ipAddress' -o tsv); \                                                                  
       printf "$internal_ip" > "/cache/04-internal-ip-{{ item }}"; \
       printf "$external_ip" > "/cache/04-external-ip-{{ item }}"; \
     fi; \
-    hostname=$(hostname); \
+    hostname="worker-{{ item }}"; \
     cfssl gencert \
       -ca=/secrets/ca.pem \
       -ca-key=/secrets/ca-key.pem  \
       -config=/secrets/ca-config.json \
-      -hostname="$hostname,$external_ip,$internal_ip" \
+      -hostname="${hostname},${external_ip},${internal_ip}" \
       -profile=kubernetes \
       "/secrets/worker-{{ item }}-csr.json" | cfssljson -bare "/secrets/worker-{{ item }}"
   with_sequence: start=0 count=2
