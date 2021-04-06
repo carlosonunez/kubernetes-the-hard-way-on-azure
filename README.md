@@ -21,12 +21,6 @@ Deploy Kubernetes from scratch on Azure based on
 
 `make clean` to destroy all traces of your lab.
 
-## Deltas
-
-The lab documentation from the [original codebase](https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/)
-have not been copied over here. You should have them open in a separate browser along with this
-reference. To see Azure-specific differences, check out the "deltas" [here](./deltas).
-
 ## Having Trouble?
 
 Check out [the troubleshooting guide](./99-troubleshooting.md).
@@ -46,3 +40,19 @@ If you'd like to run Kubernetes on your local machine, try [k3s](https://k3s.io)
 If you just want to use Kubernetes and not deal with any of this stuff, try a managed
 Kubernetes offering, like [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 or [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine).
+
+## Deltas
+
+The lab documentation from the [original codebase](https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/)
+have not been copied over here. You should have them open in a separate browser along with this
+reference. To see Azure-specific differences, check out the "deltas" [here](./deltas).
+
+- [Prerequisites](./deltas/01-prerequisites.md)
+- [Provisioning Compute Resources](./deltas/03-provision-compute-resources.md)
+- [Provisioning a CA and Generating TLS Certificates](./deltas/04-provisioning-ca-and-tls-certificates.md)
+- [Generating Kubernetes Configuration Files for Authentication](./deltas/05-kubernetes-configuration-files.md)
+- [Generating the Data Encryption Config and Key](./deltas/06-data-encryption-keys.md)
+- [Bootstrapping the etcd cluster](./deltas/07-bootstrapping-etcd.md)
+- [Bootstrapping the Kubernetes Control Plane](./deltas/08-bootstrapping-kubernetes.md)
+- [Bootstrap Kubernetes Workers](./deltas/09-bootstrapping-kubernetes-workers.md)
+- [Provisioning Pod Network Routes](./deltas/11-pod-network-routes.md)
